@@ -1,0 +1,361 @@
+CREATE TABLE prod_us9_500167.TTS_CV_PATIENT_ALL AS
+
+SELECT substr(CAST(MONTH_ID AS STRING),1,4) as COHORT_ID,
+
+A.PATIENT_ID,
+
+'R' as DATA_TYPE
+
+FROM   prod_df2_us9.v_pat_provider_prod_chnl_mth a     
+
+INNER JOIN prod_us9_500167.TTS_CV_REF_HeFH_Mkt_NDC b            
+
+ON     A.PRODUCT_ID=B.IDW_PRODUCT_ID
+
+WHERE  A.DATA_TYP_CD ='RX'
+
+AND    A.MONTH_ID BETWEEN 201401 AND 201812
+
+AND NOT EXISTS
+
+(SELECT 1 FROM prod_df2_us9.v_pat_excl C
+
+WHERE C.PATIENT_ID=A.PATIENT_ID)          --- Inserted 940,132,350 row(s)
+
+ 
+
+CREATE TABLE prod_us9_500167.TTS_CV_COH_PATIENT_ALL AS
+
+SELECT DISTINCT COHORT_ID,    PATIENT_ID as IDW_PATIENT_ID
+
+   FROM   prod_us9_500167.TTS_CV_PATIENT_ALL; --Inserted 191,289,347 row(s)
+
+ 
+
+CREATE TABLE prod_us9_500167.TTS_CV_PT_LDL_NEW
+
+as select distinct IDW_PATIENT_ID from  prod_us9_500167.TTS_CV_COH_PATIENT_ALL  --Inserted 63,461,868 row(s)
+
+ 
+
+ 
+
+--SELECT * FROM prod_df2_us9.v_pat_excl
+
+ 
+
+CREATE table prod_us9_500167.tts_cv_FACT_DX_PT_NEW AS
+
+                SELECT
+
+                      A.PATIENT_ID AS IDW_PATIENT_ID,  
+
+                      A.SVC_FR_DT  AS SERVICE_FROM_date,
+
+                      A.DIAG_CD,
+
+                      A.PRC_CD AS PROCEDURE_CD,
+
+                      A.DIAG_VERS_TYP_ID,
+
+                      A.MONTH_ID
+
+                 FROM prod_df2_us9.v_dx_trans_SS A
+
+           INNER JOIN prod_us9_500167.TTS_CV_PT_LDL_NEW B
+
+                   ON A.PATIENT_ID = B.IDW_PATIENT_ID
+
+                WHERE A.MONTH_ID between 201401 and 201812
+
+                  AND A.PATIENT_ID > 0  ;            --- Inserted 16,918,173,173 row(s)
+
+ 
+
+ 
+
+ CREATE TABLE prod_us9_500167.TTS_CV_prod_us9_500167.TTS_CV_FACT_RX_PT_NEW AS
+
+                SELECT
+
+                      A.PATIENT_ID AS IDW_PATIENT_ID,    
+
+                      A.SVC_DT AS date_OF_SERVICE,
+
+                      A.PRODUCT_ID AS IDW_PRODUCT_ID,
+
+                      A.MONTH_ID,
+
+                      A.DAYS_SUPPLY_CNT AS DAYS_SUPPLY,
+
+                      A.pat_brth_yr_nbr PATIENT_AGE,  
+
+                      A.CHNL_CD
+
+                 FROM prod_df2_us9.v_rx_trans_SS A
+
+             INNER JOIN prod_us9_500167.TTS_CV_PT_LDL_NEW B
+
+                   ON A.PATIENT_ID = B.IDW_PATIENT_ID
+
+                WHERE A.MONTH_ID BETWEEN 201401 AND 201812
+
+                  AND A.CHNL_CD IN ('R','M')
+
+                  AND A.PATIENT_ID > 0  ; --Inserted 7904336934 row(s)
+
+ 
+
+compute stats prod_us9_500167.TTS_CV_prod_us9_500167.TTS_CV_FACT_RX_PT_NEW
+
+ 
+
+compute stats prod_us9_500167.tts_cv_FACT_DX_PT_NEW;
+
+ 
+
+--select * from prod_us9_500167.tts_cv_REF_HeFH_Mkt_NDC
+
+ 
+
+ 
+
+ 
+
+ 
+
+------------------------------------------------------------------------------SRINI - START FROM HERE AFTER RX ABND DX DATA PULL---------------------------
+
+ 
+
+Similarly DX data pull
+
+-------------------------------
+
+in PDM
+
+drop table REF_DIAG_ALL;
+
+ 
+
+CREATE TABLE prod_us9_500167.tts_cv_REF_DIAG_ALL as
+
+select DIAG_VERS_TYP_ID,DIAG_CD from PROD_DF2_US9.V_DIAGNOSIS; --Inserted 112357 row(s)
+
+--PROCEDURES ALL TABLE FOR CDM PULL
+
+ 
+
+drop table REF_PROC_ALL;
+
+ 
+
+CREATE TABLE prod_us9_500167.tts_cv_REF_PROC_ALL as
+
+select PRC_VERS_TYP_ID,PRC_CD from PROD_DF2_US9.V_PROCEDURE;  -- 107308
+
+ 
+
+drop table V_TTS_CV_PT_LDL_NEW;
+
+CREATE TABLE prod_us9_500167.tts_cv_V_TTS_CV_PT_LDL_NEW as select idw_PATIENT_ID as CDM_PATIENT_ID from prod_us9_500167.TTS_CV_PT_LDL_NEW; --63461868
+
+ 
+
+-------------
+
+select * from prod_us9_500167.REF_HEFH_MKT_DIAG;
+
+ 
+
+--drop table COH_IDX_CLAIM;
+
+ 
+
+CREATE TABLE prod_us9_500167.COH_IDX_CLAIM as
+
+select * from (
+
+select substr(CAST(MONTH_ID AS STRING),1,4) as COHORT_ID, IDW_PATIENT_ID, date_OF_SERVICE, a.IDW_PRODUCT_ID, MONTH_ID,PATIENT_AGE,GENERIC_NAME,
+
+PRODUCT_LEVEL_1, PRODUCT_LEVEL_2, PRODUCT_LEVEL_3, PRODUCT_LEVEL_4, PRODUCT_LEVEL_5,
+
+ROW_NUMBER()
+
+over (partition by substr(CAST(MONTH_ID AS STRING),1,4),IDW_PATIENT_ID order by date_OF_SERVICE) as RNK
+
+from prod_us9_500167.TTS_CV_FACT_RX_PT_NEW a 
+
+inner join prod_us9_500167.REF_HEFH_MKT_NDC b
+
+on a.IDW_PRODUCT_ID=b.IDW_PRODUCT_ID
+
+where month_id between 201401 and 201812) a where rnk=1; -- 174717521
+
+ 
+
+ 
+
+select * from prod_us9_500167.REF_HEFH_MKT_DIAG_PROB -- 22
+
+ 
+
+select * from prod_us9_500167.COH_IDX_CLAIM
+
+ 
+
+commit;
+
+------------------
+
+ 
+
+ 
+
+ 
+
+ 
+
+-- merging v_tts_cv_hefh_diag_oi and v_tts_cv_diag_prob_oi
+
+ 
+
+--select distinct data_feed from FACT_CDM_DIAG_RAW;
+
+--CREATE VIEW FOR DIAG_PT--
+
+ 
+
+invalidate metadata prod_us9_500167.ref_hefh_mkt_diag_prob;
+
+ 
+
+CREATE table prod_us9_500167.FACT_PT_DIAG as
+
+select distinct IDW_PATIENT_ID,DIAG_VERS_TYP_ID,DIAG_CD,SERVICE_FROM_date
+
+from prod_us9_500167.tts_cv_FACT_DX_PT_NEW; -- 6491726772
+
+ 
+
+ 
+
+CREATE table  prod_us9_500167.HEFH_DIAG as
+
+select DIAG_CD,DIAG_VERS_TYP_ID  from prod_us9_500167.REF_HEFH_MKT_DIAG
+
+UNION
+
+select DIAG_CD,DIAG_VERS_TYP_ID  from prod_us9_500167.REF_HEFH_MKT_DIAG_PROB; --33 records.
+
+ 
+
+ 
+
+ 
+
+ 
+
+CREATE table prod_us9_500167.COH_IDX_PT_TYPE as
+
+select a.*, 1 as pt_type from prod_us9_500167.COH_IDX_CLAIM a
+
+where  exists
+
+(select 1 from prod_us9_500167.FACT_PT_DIAG  b where a.IDW_PATIENT_ID=b.IDW_PATIENT_ID and b.DIAG_CD='E7801' and b.SERVICE_FROM_date>=
+
+TO_DATE(from_unixtime(UNIX_TIMESTAMP('2016-10-01 00:00:00','yyyy-MM-dd')))
+
+); -- 842539
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+CREATE table prod_us9_500167.PT_TYPE_LB as
+
+select distinct a.*,
+
+b.date_OF_SERVICE as lb_dos,
+
+b.days_supply as lb_days_supply,
+
+c.generic_name as lb_generic_name,
+
+c.PRODUCT_LEVEL_1 as lb_prd_level_1,
+
+c.PRODUCT_LEVEL_2 as lb_prd_level_2,
+
+c.PRODUCT_LEVEL_3 as lb_prd_level_3,
+
+c.PRODUCT_LEVEL_4 as lb_prd_level_4 ,
+
+C.MARKET_DEF_NAME as lb_MARKET_DEF_NAME
+
+  from prod_us9_500167.COH_IDX_CLAIM a
+
+       inner join prod_us9_500167.TTS_CV_FACT_RX_PT_NEW b on a.idw_patient_id = b.idw_patient_id
+
+                                           and to_date(b.date_of_service) BETWEEN to_date(date_sub(a.date_OF_SERVICE,365*2)) and to_date(date_sub(a.date_OF_SERVICE,1))
+
+      INNER JOIN prod_us9_500167.REF_HEFH_MKT_NDC c on b.IDW_PRODUCT_ID=C.IDW_PRODUCT_ID   
+
+ where a.PRODUCT_LEVEL_4 <> 'HIGH DOSE';  -- Inserted 735453208 row(s)
+
+============================================== from here=======
+
+ 
+
+CREATE table prod_us9_500167.PT_TYPE_LB_SI1 as
+
+select a.* from prod_us9_500167.PT_TYPE_LB a
+
+       inner join (select cohort_id,idw_patient_id from  prod_us9_500167.PT_TYPE_LB where lb_MARKET_DEF_NAME='STATINS' group by cohort_id,idw_patient_id having count(distinct LB_PRD_LEVEL_2)>=1 ) b
+
+       on a.idw_patient_id = b.idw_patient_id and a.cohort_id=b.cohort_id
+
+union
+
+select c.* from prod_us9_500167.PT_TYPE_LB c
+
+       inner join (select cohort_id,idw_patient_id from  prod_us9_500167.PT_TYPE_LB where lb_MARKET_DEF_NAME='STATINS' group by cohort_id,idw_patient_id having count(distinct LB_PRD_LEVEL_3)>=1 ) d
+
+       on c.idw_patient_id = d.idw_patient_id and c.cohort_id=d.cohort_id;
+
+-- 727483683
+
+ 
+
+ 
+
+CREATE table prod_us9_500167.tmp1_PT as
+
+select a.* from prod_us9_500167.tts_cv_FACT_DX_PT_NEW a inner join prod_us9_500167.REF_SI_DIAG  b on A.DIAG_CD=B.DIAG_CD and A.DIAG_VERS_TYP_ID=B.DIAG_VERS_TYP_ID;
+
+---2185955634
+
+ 
+
+CREATE table prod_us9_500167.PT_TYPE_LB_SI2  as
+
+select distinct a.*, b.MONTH_ID as LB_SIDX_MTH, b.SERVICE_FROM_date as lb_sidx__dos
+
+  from prod_us9_500167.PT_TYPE_LB_SI1 a inner join prod_us9_500167.tmp1_PT b
+
+                                             on a.idw_patient_id = b.idw_patient_id
+
+                                            and to_date(b.SERVICE_FROM_date) BETWEEN to_date(date_sub(a.date_OF_SERVICE,365*2)) and to_date(a.date_OF_SERVICE)
+
+                                            and to_date(b.SERVICE_FROM_date) between to_date(a.lb_dos) and date_add(to_date(a.lb_dos),(a.lb_days_supply-1));
+
+-- 192885185
+
+--- ================taking long time====== almost half an hour=============
+
+ 

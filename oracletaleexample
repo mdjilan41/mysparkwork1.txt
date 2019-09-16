@@ -1,0 +1,652 @@
+--dx data pull and creating DX_DIM_DATA table
+
+COMPUTE STATS PROD_US9_500167.tts_cv_merge_cdm_dx_rx_pat_2016;
+
+
+
+CREATE TABLE  PROD_US9_500167.tts_cv_dx_2016_tmp1 AS
+    SELECT DISTINCT A.CLAIM_ID, A.PATIENT_ID IDW_PATIENT_ID, A.PLAN_ID ORIG_PLAN_ID, nvl(C.PLAN_ID,A.PLAN_ID) PLAN_ID, 
+    A.PROVIDER_RENDERING_ID ORIG_RENDERING_PROV_ID, nvl(D.PROVIDER_ID,A.PROVIDER_RENDERING_ID) PROVIDER_RENDERING_ID, B.MIN_SSD, B.MIN_DOS, B.MARKET_ID, 
+    A.TOTAL_CLAIM_CRGD_AMT TOT_CLAIM_CHG, A.TOTAL_CLAIM_BAL_AMT TOT_CLAIM_BAL, A.TOTAL_LAB_CRGD_AMT TOT_PURCH_SVC_LAB_CHARGES
+    FROM PROD_DF2_US9.V_DX_CLAIM A INNER JOIN PROD_US9_500167.tts_cv_merge_cdm_dx_rx_pat_2016 B
+    ON A.PATIENT_ID = B.IDW_PATIENT_ID
+    LEFT OUTER JOIN PROD_US9_500167.V_PDM_PLAN C
+    ON A.PLAN_ID = C.FR_PLAN_ID
+    LEFT OUTER JOIN PROD_US9_500167.V_PDM_PROVIDER D
+    ON A.PROVIDER_RENDERING_ID=D.FR_PROVIDER_ID 
+    WHERE A.MONTH_ID between 201601 and 201612 
+    AND A.CLAIM_TYP_CD = 'P'
+ 
+ 
+ done.........
+
+
+compute stats PROD_US9_500167.tts_cv_dx_2016_tmp1;
+
+
+DROP TABLE PROD_US9_500167.tts_cv_dx_clm_extrct_2016;
+
+CREATE TABLE PROD_US9_500167.tts_cv_dx_clm_extrct_2016 as	
+               SELECT 
+                      A.CLAIM_ID ,
+                      A.SVC_NBR AS SERVICE_NBR ,
+                      A.DIAG_CD_POSN_NBR AS DX_CODE_POSITION ,
+                      A.APRV_AMT AS APPROVED_AMT ,
+                      A.DIAG_CD ,
+                      A.PATIENT_ID AS IDW_PATIENT_ID ,
+                      B.ORIG_PLAN_ID,   --new
+                      B.PLAN_ID,   --new
+                      -999 AS IDW_PAYER_ID ,  --this will have the INFERRED PLAN ID
+                      B.ORIG_RENDERING_PROV_ID, --new
+                      B.PROVIDER_RENDERING_ID AS IDW_RENDERING_PROVIDER_ID ,
+                      A.MONTH_ID ,
+                      A.PAT_brth_YR_NBR AS PATIENT_AGE ,
+                      A.PAT_ZIP3_CD AS PATIENT_ZIP3 ,
+                      A.PLACE_OF_SVC_CD AS PLACE_OF_SERVICE_CD ,
+                      A.PRC_CD AS PROCEDURE_CD ,
+                      A.SVC_CRGD_AMT AS SERVICE_CHARGE_AMT ,
+                      A.SVC_FR_DT AS SERVICE_FROM_DATE ,
+                      A.SVC_TO_DT AS SERVICE_TO_DATE ,
+                      A.TOS_ID AS TYPE_OF_SVCS_ID ,
+                      A.UNIT_OF_SVC_AMT AS UNITS_OF_SERVICE ,
+                      A.VST_ID AS VISIT_KEY ,
+                      A.CLAIM_MONTH_ID ,
+                      B.TOT_CLAIM_CHG ,
+                      B.TOT_CLAIM_BAL ,
+                      B.TOT_PURCH_SVC_LAB_CHARGES ,
+                      B.MARKET_ID ,
+                      B.MIN_SSD ,
+                      B.MIN_DOS ,
+                      'P' AS CLAIM_TYP_CD
+                 FROM PROD_DF2_US9.V_DX_TRANS_ss A	
+           INNER JOIN PROD_US9_500167.tts_cv_dx_2016_tmp1 B	
+                   ON A.CLAIM_ID = B.CLAIM_ID	
+                WHERE A.MONTH_ID BETWEEN 201601 AND 201612	
+                  AND CAST(A.SVC_FR_DT  AS INTEGER) >=  CAST(B.MIN_SSD AS INTEGER)
+                  AND A.CLAIM_TYP_CD = 'P';
+
+CREATE TABLE PROD_US9_500167.tts_cv_Rx_clm_extrct_2016 AS
+          SELECT RX.*, CASE WHEN nvl(RX.STG_OPC_AMT, -9999) > nvl(RX.RETAIL_DOL_AMT,-9999) THEN RX.RETAIL_DOL_AMT 
+                 ELSE RX.STG_OPC_AMT
+           END AS PATIENT_OPC    
+          FROM   
+           (   
+            SELECT 
+                    A.CHNL_CD,
+                    A.CLAIM_ID,
+                    A.SVC_DT AS DATE_OF_SERVICE,
+                    A.DAYS_SUPPLY_CNT AS DAYS_SUPPLY,     
+                    A.FILL_NBR,                
+                    A.PAT_BRTH_YR_NBR AS PATIENT_AGE,     
+                    A.PAT_GENDER_CD AS PATIENT_GENDER,
+                    A.PATIENT_ID AS IDW_PATIENT_ID,
+                    A.PHARMACY_ID AS IDW_PHARMACY_ID,
+                    A.PRODUCT_ID AS IDW_PRODUCT_ID,
+                    A.PLAN_ID ORIG_PLAN_ID, 
+                    nvl(E.PLAN_ID,A.PLAN_ID) PLAN_ID, 
+                    -999  AS IDW_PAYER_ID,  --to have inf_plan_id
+                    A.PROVIDER_ID ORIG_PROV_ID, 
+                    nvl(G.PROVIDER_ID,A.PROVIDER_ID) IDW_PROVIDER_ID,   
+                    A.MONTH_ID,
+                    A.COPAY_AMT AS COPAY_AMT,
+                    --A.PAT_OPC_AMT AS PATIENT_OPC,
+                    A.PAT_PAY_AMT AS PATIENT_PAY_AMT,
+                    A.PAT_ZIP3_CD AS PATIENT_ZIP,
+                    D.ZIP AS PHARMACY_ZIP,  --A.OTLT_ZIP AS PHARMACY_ZIP,
+                    A.DSPNSD_QTY AS QUANTITY_DISPENSED,
+                    A.CUST_PRC AS RETAIL_DOL_AMT,           
+                    A.TOTAL_PAID_AMT AS TOTAL_AMT_PAID,       
+                    B.MARKET_ID ,
+                    B.MIN_DOS ,
+                    B.MIN_SSD,
+                    A.SUPPLIER_ID,
+                    A.PAY_TYP_CD,
+                    CASE WHEN C.CLAIM_ID IS NULL THEN '0' ELSE '1' END AS ACTN_TBL_MTCH,
+					
+                    C.COPAY_AMT_ACTN_CD,
+                    C.PAT_PAY_ACTN_CD,
+                    C.CUST_PRICE_ACTN_CD,
+          --Retrieve the OPC from RX data based on the following criteria (trumping rules)
+                    CASE WHEN A.PAY_TYP_CD = 1 THEN A.CUST_PRC
+                       WHEN C.PAT_PAY_ACTN_CD IN (' ','Z','H','03','05','00','01','12','13','16','17','18') THEN A.PAT_PAY_AMT
+                       WHEN C.COPAY_AMT_ACTN_CD IN (' ','Z','H','03','05','00','01','13','16','17','18') THEN A.COPAY_AMT
+                    ELSE NULL
+                    END AS STG_OPC_AMT,
+                    MOD(PATIENT_ID,20) PAT_MOD  -- (PATIENT_ID % 20).as(""dd) 
+               FROM PROD_DF2_US9.v_rx_trans_ss A 
+               INNER JOIN PROD_US9_500167.tts_cv_merge_cdm_dx_rx_pat_2016 B
+                 ON A.PATIENT_ID = B.IDW_PATIENT_ID
+               LEFT OUTER JOIN PROD_DF2_US9.v_rx_trans_actn C
+               ON A.MONTH_ID=C.MONTH_ID 
+               AND A.CLAIM_ID=C.CLAIM_ID
+               LEFT OUTER JOIN PROD_DF2_US9.V_PHARMACY D    
+                ON A.PHARMACY_ID=D.PHARMACY_ID    
+               LEFT OUTER JOIN PROD_US9_500167.V_PDM_PLAN E
+                ON A.PLAN_ID = E.FR_PLAN_ID
+               LEFT OUTER JOIN PROD_US9_500167.V_PDM_PROVIDER G
+                ON A.PROVIDER_ID=G.FR_PROVIDER_ID
+               WHERE A.MONTH_ID BETWEEN 201601 AND 201612
+                AND A.SVC_DT >= B.MIN_SSD 
+                AND A.PATIENT_ID > 0
+                ) RX 
+
+COMPUTE STATS PROD_US9_500167.tts_cv_dx_clm_extrct_2016;
+
+COMPUTE STATS PROD_US9_500167.tts_cv_Rx_clm_extrct_2016;
+
+drop table PROD_US9_500167.tts_cv_dx_2018_tmp1;
+
+drop table PROD_US9_500167.tts_cv_dx_2017_tmp1;
+
+drop table PROD_US9_500167.tts_cv_dx_2016_tmp1
+
+
+done.................
+-----------UPTO HERE
+
+compute stats PROD_US9_500167.tts_cv_dx_clm_extrct_2016;
+
+
+CREATE TABLE PROD_US9_500167.TTS_CV_PAT_PLN AS
+select distinct 2016 CLAIM_YR, 'RX' as data_typ_cd, idw_patient_id as patient_id,  plan_id
+from PROD_US9_500167.tts_cv_Rx_clm_extrct_2016   //Long = 74759633
+
+union all
+select distinct 2017 CLAIM_YR, 'RX' as data_typ_cd, idw_patient_id as patient_id,  plan_id
+from PROD_US9_500167.tts_cv_Rx_clm_extrct_2017
+union all
+select distinct 2018 CLAIM_YR, 'RX' as data_typ_cd, idw_patient_id as patient_id,  plan_id
+from PROD_US9_500167.tts_cv_Rx_clm_extrct_2018
+union all
+select distinct 2016 CLAIM_YR, 'DX' as data_typ_cd, idw_patient_id as patient_id,  plan_id
+from PROD_US9_500167.tts_cv_Dx_clm_extrct_2016
+union all
+select distinct 2017 CLAIM_YR, 'DX' as data_typ_cd, idw_patient_id as patient_id,  plan_id
+from PROD_US9_500167.tts_cv_Dx_clm_extrct_2017
+union all
+select distinct 2018 CLAIM_YR, 'DX' as data_typ_cd, idw_patient_id as patient_id,  plan_id
+from PROD_US9_500167.tts_cv_Dx_clm_extrct_2018
+
+
+done..........................
+
+create table prod_us9_500167.tts_cv_pat_lst as
+select distinct idw_patient_id  from PROD_US9_500167.tts_cv_merge_cdm_dx_rx_pat_2016
+union
+select distinct idw_patient_id  from prod_us9_500167.tts_cv_merge_cdm_dx_rx_pat_2017
+union
+select distinct idw_patient_id  from prod_us9_500167.tts_cv_merge_cdm_dx_rx_pat_2018;
+
+create table prod_us9_500167.tts_cv_pat_pref_extr as
+select 
+   pat_id ,
+   pat_gender_cd ,
+   pat_zip_3 ,
+   most_rcnt_dx_payer_pln_id_ccy ,
+   most_rcnt_dx_payer_pln_id_pcy ,
+   most_rcnt_dx_payer_pln_id_p2cy ,
+   most_freq_dx_payer_pln_id_ccy ,
+   most_freq_dx_payer_pln_id_pcy ,
+   most_freq_dx_payer_pln_id_p2cy ,
+   most_rcnt_rx_payer_pln_id_ccy ,
+   most_rcnt_rx_payer_pln_id_pcy ,
+   most_rcnt_rx_payer_pln_id_p2cy ,
+   most_freq_rx_payer_pln_id_ccy ,
+   most_freq_rx_payer_pln_id_pcy ,
+   most_freq_rx_payer_pln_id_p2cy 
+ from PROD_DF2_US9_DPT.v_us9_pref_final_extrt a
+ inner join prod_us9_500167.tts_cv_pat_lst b
+ on a.pat_id=b.idw_patient_id
+WHERE PROC_MTH = 201812
+
+COMPUTE STATS prod_us9_500167.tts_cv_pat_pref_extr
+
+COMPUTE STATS prod_us9_500167.tts_cv_pat_lst
+
+COMPUTE STATS PROD_US9_500167.TTS_CV_PAT_PLN
+
+
+DONE...........................
+
+
+--------------------------------------------------
+CREATE TABLE PROD_US9_500167.tts_cv_T_DX_DIM_DATA_2016_PRE AS
+SELECT    a.CLAIM_ID,a.SERVICE_NBR,a.DX_CODE_POSITION,a.APPROVED_AMT,a.DIAG_CD,a.IDW_PATIENT_ID,
+    a.ORIG_PLAN_ID,a.PLAN_ID, NVL(INF.INF_PLAN_ID,a.plan_id) AS IDW_PAYER_ID,
+    a.ORIG_RENDERING_PROV_ID,a.IDW_RENDERING_PROVIDER_ID,
+    a.MONTH_ID,a.PATIENT_AGE,a.PATIENT_ZIP3,a.PLACE_OF_SERVICE_CD,
+    a.PROCEDURE_CD,a.SERVICE_CHARGE_AMT,a.SERVICE_FROM_DATE,
+    a.SERVICE_TO_DATE,a.TYPE_OF_SVCS_ID,a.UNITS_OF_SERVICE,
+    a.VISIT_KEY,a.CLAIM_MONTH_ID,a.TOT_CLAIM_CHG,a.TOT_CLAIM_BAL,
+    a.TOT_PURCH_SVC_LAB_CHARGES,a.MARKET_ID,a.MIN_SSD,a.MIN_DOS,
+    a.CLAIM_TYP_CD, MOD(A.IDW_PATIENT_ID, 20) PAT_MOD
+FROM PROD_US9_500167.tts_cv_dx_clm_extrct_2016 A 
+--
+    LEFT OUTER JOIN prod_us9_500167.TTS_CV_DX_PAT_PLN_INF INF
+    ON A.IDW_PATIENT_ID = INF.IN_PATIENT_ID
+    AND A.PLAN_ID = INF.IN_PLAN_ID
+    AND INF.IN_CLAIM_YR = 2016
+ --   AND INF.IN_DATA_TYP_CD = 'DX'
+--
+--this table gets revised after step 2 of inf plan method  (see "Inf Plans Step2 bdf" file)
+
+COMPUTE STATS PROD_US9_500167.tts_cv_T_DX_DIM_DATA_2016_PRE
+
+DROP TABLE PROD_US9_500167.tts_cv_T_DX_DIM_DATA_2016;
+
+CREATE TABLE PROD_US9_500167.tts_cv_T_DX_DIM_DATA_2016 AS
+with  q1 as 
+(    
+    SELECT  a.CLAIM_ID,a.SERVICE_NBR,a.DX_CODE_POSITION,a.APPROVED_AMT,a.DIAG_CD,a.IDW_PATIENT_ID,
+    a.ORIG_PLAN_ID, A.INF_PLAN_ID_STP1, A.IDW_PAYER_ID,
+--    a.ORIG_PLAN_ID,a.PLAN_ID,  A.IDW_PAYER_ID,
+    a.ORIG_RENDERING_PROV_ID,a.IDW_RENDERING_PROVIDER_ID,
+    a.MONTH_ID,a.PATIENT_AGE,a.PATIENT_ZIP3,a.PLACE_OF_SERVICE_CD,
+    a.PROCEDURE_CD,a.SERVICE_CHARGE_AMT,a.SERVICE_FROM_DATE,
+    a.SERVICE_TO_DATE,a.TYPE_OF_SVCS_ID,a.UNITS_OF_SERVICE,
+    a.VISIT_KEY,a.CLAIM_MONTH_ID,a.TOT_CLAIM_CHG,a.TOT_CLAIM_BAL,
+    a.TOT_PURCH_SVC_LAB_CHARGES,a.MARKET_ID,a.MIN_SSD,a.MIN_DOS,
+    a.CLAIM_TYP_CD, A.PAT_MOD,
+    PRC.ORIG_SERVICE_DESCRIPTION TTS_SERVICE_DESCRIPTION,
+    --DECODE(PAT.PATIENT_GENDER, 'M', 'Male', 'F', 'Female', NULL) AS TTS_GENDER,
+	CASE  WHEN PAT.PATIENT_GENDER = 'M' THEN 'Male' 
+      WHEN PAT.PATIENT_GENDER = 'F' THEN 'Female'
+      ELSE NULL 
+      AS TTS_GENDER
+    AGE.AGE_ID AS TTS_AGE_ID,
+    AGE.AGE_DESC AS TTS_AGE_DESC,
+    coalesce(CC.CATEGORY_DESC,cc1.PROCEDURE_LEVEL_1) AS TTS_CATEGORY_DESC,
+    case when CC.CATEGORY_DESC is not null then 1 else 0 end  AS TTS_COMPLICATION_FLAG,
+    case when CC.CATEGORY_DESC is not null or cc1.PROCEDURE_LEVEL_1 is not null then 1 else 0 end AS TTS_COMORBIDITY_FLAG,
+     CASE
+         WHEN RTRIM(LTRIM(PLACE_OF_SERVICE_CD)) IN ('11', '3', 'O') THEN 'OFFICE'
+         WHEN RTRIM(LTRIM(PLACE_OF_SERVICE_CD)) IN ('21', '1', 'IH') THEN 'INP_HOS'
+         WHEN RTRIM(LTRIM(PLACE_OF_SERVICE_CD)) IN ('22', '2', 'OH') THEN 'OP_HOS'
+         WHEN RTRIM(LTRIM(PLACE_OF_SERVICE_CD)) IN ('23', 'ER') THEN 'ER'
+         WHEN RTRIM(LTRIM(PLACE_OF_SERVICE_CD)) IN ('24', 'AS', 'B') THEN 'AM_SURG'
+         ELSE 'OTHER'
+     END TTS_PLACE_OF_SERVICE,
+    NVL(PROV.TTS_DX_SPECIALTY_DESC, 'UNKNOWN') AS  TTS_SPECIALTY_DESC, 
+    NVL(PROV.TTS_DX_SPECIALTY_ID , 0) AS TTS_SPECIALTY_ID, 
+    NVL(PAYER.TTS_PAY_TYPE_ID, 5) AS TTS_PAY_TYPE_ID, 
+    NVL(PAYER.TTS_PAY_TYPE_DESC, 'Unknown') AS TTS_PAY_TYPE_DESC,
+    PROV.ZIPCODE PROV_ZIPCODE,
+    REG.REGION AS OLD_TTS_REGION, 
+    REG.ST AS OLD_TTS_STATE,
+    REG.CBSA_CD AS OLD_TTS_CBSA_CD,
+    REG.COUNTY as OLD_TTS_COUNTY,
+    --MAX(DECODE(PROV.IDW_PROVIDER_ID, NULL, 0, 1)) OVER(PARTITION BY A.IDW_PATIENT_ID) AS TTS_MD_PROC_FLAG ,
+    MAX(CASE WHEN(PROV.IDW_PROVIDER_ID = NULL) ,0 ,1)) OVER(PARTITION BY A.IDW_PATIENT_ID) AS TTS_MD_PROC_FLAG
+	NVL(PT_TYPE,-1) as    TTS_PT_TYPE
+	
+    FROM PROD_US9_500167.tts_cv_T_DX_DIM_DATA_2016_PRE A 
+    LEFT OUTER JOIN PROD_US9_500167.tts_cv_DIM_PATIENT_2016 PAT
+    ON A.IDW_PATIENT_ID = PAT.IDW_PATIENT_ID
+    LEFT OUTER  JOIN PROD_US9_500167.tts_cv_PROVIDER_SPECIALTY_XREF PROV
+    ON A.IDW_RENDERING_PROVIDER_ID = PROV.IDW_PROVIDER_ID
+    LEFT OUTER JOIN PROD_US9_500167.tts_cv_PAYER_XREF_ORIG PAYER 
+    ON A.IDW_PAYER_ID = PAYER.IDW_PAYER_ID
+    LEFT OUTER JOIN PROD_US9_500167.tts_cv_DIM_REGION REG 
+    ON PROV.ZIPCODE = REG.ZIP
+    LEFT OUTER JOIN PROD_US9_500167.tts_cv_DIM_AGE AGE
+    ON A.PATIENT_AGE BETWEEN AGE.AGE_LOWER AND AGE.AGE_UPPER
+    LEFT OUTER JOIN PROD_US9_500167.tts_cv_DIM_COMP_COMORB CC
+    ON A.DIAG_CD = CC.DIAG_CD
+    LEFT OUTER JOIN PROD_US9_500167.tts_cv_DIM_COMP_COMORB_PROC CC1
+    ON A.PROCEDURE_CD = CC1.PRC_CD
+    LEFT OUTER JOIN PROD_US9_500167.tts_cv_DIM_PROCEDURE PRC
+    ON A.PROCEDURE_CD = PRC.PROCEDURE_CD
+    LEFT OUTER JOIN PROD_US9_500167.COH_IDX_PT_TYPE PT_TYPE
+    ON A.IDW_PATIENT_ID = PT_TYPE.IDW_PATIENT_ID AND PT_TYPE.cohort_id= '2016'
+	
+    WHERE PAT.PATIENT_GENDER IN ('1','2','M', 'F') 
+    AND A.IDW_RENDERING_PROVIDER_ID IS NOT NULL
+    AND A.IDW_PAYER_ID IS NOT NULL
+    AND A.PATIENT_AGE IS NOT NULL)
+	
+select distinct * from q1;
+
+compute stats PROD_US9_500167.tts_cv_T_DX_DIM_DATA_2016;
+
+DROP TABLE PROD_US9_500167.TTS_CV_T_1_INDEX_FILE_DX_2016;
+
+CREATE TABLE PROD_US9_500167.TTS_CV_T_1_INDEX_FILE_DX_2016 AS
+    SELECT IDW_PATIENT_ID, MAX(PROV_ZIPCODE) PROV_ZIPCODE, OLD_TTS_REGION TTS_REGION, OLD_TTS_STATE TTS_STATE, OLD_TTS_CBSA_CD TTS_CBSA_CD , OLD_TTS_COUNTY TTS_COUNTY,
+    COUNT(*) AS REC_CNT FROM PROD_US9_500167.tts_cv_T_DX_DIM_DATA_2016 A 
+    GROUP BY IDW_PATIENT_ID, OLD_TTS_REGION, OLD_TTS_STATE, OLD_TTS_CBSA_CD, OLD_TTS_COUNTY;
+
+DROP TABLE PROD_US9_500167.TTS_CV_T_INDEX_FILE_DX_2016;
+
+CREATE TABLE  PROD_US9_500167.TTS_CV_T_INDEX_FILE_DX_2016  AS
+with q1 as (SELECT IDW_PATIENT_ID, PROV_ZIPCODE, TTS_REGION, TTS_STATE, TTS_CBSA_CD, TTS_COUNTY, ROW_NUMBER() OVER ( PARTITION BY IDW_PATIENT_ID ORDER BY REC_CNT DESC) AS RNK 
+         FROM  PROD_US9_500167.TTS_CV_T_1_INDEX_FILE_DX_2016)
+  SELECT IDW_PATIENT_ID,PROV_ZIPCODE, TTS_REGION, TTS_STATE, TTS_CBSA_CD ,TTS_COUNTY 
+  FROM   q1
+  WHERE RNK = 1;
+
+compute stats PROD_US9_500167.TTS_CV_T_INDEX_FILE_DX_2016;
+
+DROP TABLE PROD_US9_500167.tts_cv_DX_DIM_DATA_2016;
+
+ CREATE TABLE PROD_US9_500167.tts_cv_DX_DIM_DATA_2016  AS 
+    SELECT distinct 
+      A.CLAIM_ID,
+      A.SERVICE_NBR,
+      A.DX_CODE_POSITION,
+      A.APPROVED_AMT,
+     A.ORIG_PLAN_ID, 
+     A.INF_PLAN_ID_STP1, 
+     A.IDW_PAYER_ID,
+      A.DIAG_CD,
+      A.IDW_PATIENT_ID,
+      A.MONTH_ID,
+      A.PATIENT_AGE,
+      A.PATIENT_ZIP3,
+      A.PLACE_OF_SERVICE_CD,
+      A.PROCEDURE_CD,
+      A.IDW_RENDERING_PROVIDER_ID,
+      A.SERVICE_CHARGE_AMT,
+      A.SERVICE_FROM_DATE,
+      A.SERVICE_TO_DATE,
+      A.TYPE_OF_SVCS_ID,
+      A.UNITS_OF_SERVICE,
+      A.VISIT_KEY,
+      A.CLAIM_MONTH_ID,
+      A.TOT_CLAIM_CHG,
+      A.TOT_CLAIM_BAL,
+      A.TOT_PURCH_SVC_LAB_CHARGES,
+      A.MARKET_ID,
+      A.MIN_SSD,
+      A.MIN_DOS,
+      A.TTS_GENDER,
+      A.TTS_AGE_ID,
+      A.TTS_AGE_DESC,
+      A.TTS_CATEGORY_DESC,
+      A.TTS_COMPLICATION_FLAG,
+      A.TTS_COMORBIDITY_FLAG,
+      A.TTS_PLACE_OF_SERVICE,
+      A.TTS_SPECIALTY_DESC,
+      A.TTS_SPECIALTY_ID,
+      A.TTS_PAY_TYPE_ID,
+      A.TTS_PAY_TYPE_DESC,
+      B.PROV_ZIPCODE,
+      B.TTS_REGION,
+      B.TTS_STATE,
+      B.TTS_CBSA_CD,
+      B.TTS_COUNTY ,
+      A.TTS_MD_PROC_FLAG,
+      A.TTS_SERVICE_DESCRIPTION,
+      A.TTS_PT_TYPE
+    FROM PROD_US9_500167.tts_cv_T_DX_DIM_DATA_2016 A INNER JOIN PROD_US9_500167.TTS_CV_T_INDEX_FILE_DX_2016 B
+    ON A.IDW_PATIENT_ID = B.IDW_PATIENT_ID;
+
+compute stats PROD_US9_500167.tts_cv_DX_DIM_DATA_2016;
+-------------------------------------------------------
+RX DIM DATA
+
+DROP TABLE PROD_US9_500167.tts_cv_T_RX_DIM_DATA_2016_PRE
+
+CREATE TABLE PROD_US9_500167.tts_cv_T_RX_DIM_DATA_2016_PRE AS
+SELECT A.CHNL_CD,A.CLAIM_ID,A.DATE_OF_SERVICE,A.DAYS_SUPPLY,A.FILL_NBR,A.PATIENT_AGE,
+A.PATIENT_GENDER,A.IDW_PATIENT_ID,A.IDW_PHARMACY_ID,A.IDW_PRODUCT_ID,
+A.ORIG_PLAN_ID,A.PLAN_ID,INF.INF_PLAN_ID AS IDW_PAYER_ID,
+A.ORIG_PROV_ID,A.IDW_PROVIDER_ID,
+A.MONTH_ID,A.COPAY_AMT,A.PATIENT_PAY_AMT,A.PATIENT_ZIP,A.PHARMACY_ZIP,
+A.QUANTITY_DISPENSED,A.RETAIL_DOL_AMT,A.TOTAL_AMT_PAID,A.MARKET_ID,
+A.MIN_DOS,A.MIN_SSD,A.SUPPLIER_ID,A.PAY_TYP_CD,A.ACTN_TBL_MTCH,
+A.COPAY_AMT_ACTN_CD,A.PAT_PAY_ACTN_CD,A.CUST_PRICE_ACTN_CD,
+A.STG_OPC_AMT,A.PAT_MOD,A.PATIENT_OPC
+FROM PROD_US9_500167.tts_cv_Rx_clm_extrct_2016 A 
+--
+    LEFT OUTER JOIN prod_us9_500167.TTS_CV_RX_PAT_PLN_INF INF
+    ON A.IDW_PATIENT_ID = INF.IN_PATIENT_ID
+    AND A.PLAN_ID = INF.IN_PLAN_ID
+    AND INF.IN_CLAIM_YR = 2016
+ --   AND INF.IN_DATA_TYP_CD = 'RX'
+--
+
+done..............
+
+COMPUTE STATS PROD_US9_500167.tts_cv_T_RX_DIM_DATA_2016_PRE;
+
+DROP TABLE PROD_US9_500167.tts_cv_T_RX_DIM_DATA_2016;
+
+CREATE TABLE PROD_US9_500167.tts_cv_T_RX_DIM_DATA_2016 AS
+    SELECT A.*,
+   -- DECODE(PATIENT_GENDER, '1', 'Male','M', 'Male', '2', 'Female', 'F', 'Female',NULL) AS TTS_GENDER,
+    CASE WHEN(A.PATIENT_GENDER) IN ('1','M') THEN 'Male'
+	     WHEN(A.PATIENT_GENDER) IN ('2','F') THEN 'Female',
+		 
+    NVL(PROV.TTS_SPECIALTY_DESC, 'UNKNOWN') AS  TTS_SPECIALTY_DESC, 
+    NVL(PROV.TTS_SPECIALTY_ID , 0) AS TTS_SPECIALTY_ID, 
+    NVL(PAYER.TTS_PAY_TYPE_ID, 5) AS TTS_PAY_TYPE_ID, 
+    NVL(PAYER.TTS_PAY_TYPE_DESC, 'Unknown') AS TTS_PAY_TYPE_DESC,
+    REG.REGION AS OLD_TTS_REGION, 
+    REG.ST AS OLD_TTS_STATE,
+    REG.CBSA_CD AS OLD_TTS_CBSA_CD,
+    REG.COUNTY as OLD_TTS_COUNTY,
+    AGE.AGE_ID AS TTS_AGE_ID,
+    AGE.AGE_DESC AS TTS_AGE_DESC,
+    PROD.PRODUCT_LEVEL_5  AS TTS_PNAME, 
+    PROD.TTS_ROUTE AS TTS_ROUTE,
+    PROD.PRODUCT_LEVEL_4 AS TTS_TCRF4_DESC,
+    PROD.TTS_PROD_GROUP,
+    PROD.TTS_SUB_CLASS,
+    PROD.TTS_CLASS,
+    PROD.TTS_CLASS_TYPE ,
+    NVL(PT_TYPE,-1) as    TTS_PT_TYPE
+    FROM PROD_US9_500167.tts_cv_T_RX_DIM_DATA_2016_PRE A 
+    LEFT OUTER JOIN PROD_US9_500167.TTS_CV_PROVIDER_SPECIALTY_XREF PROV
+    ON A.IDW_PROVIDER_ID = PROV.IDW_PROVIDER_ID
+    LEFT OUTER JOIN PROD_US9_500167.TTS_CV_PAYER_XREF_ORIG PAYER 
+    ON A.IDW_PAYER_ID = PAYER.IDW_PAYER_ID
+    LEFT OUTER JOIN PROD_US9_500167.TTS_CV_DIM_REGION REG 
+    ON A.PHARMACY_ZIP = REG.ZIP
+    LEFT OUTER JOIN PROD_US9_500167.TTS_CV_DIM_AGE AGE
+    ON A.PATIENT_AGE BETWEEN AGE.AGE_LOWER AND AGE.AGE_UPPER
+    LEFT OUTER JOIN PROD_US9_500167.TTS_CV_DIM_DOI PROD
+    ON A.IDW_PRODUCT_ID = PROD.IDW_PRODUCT_ID
+    LEFT OUTER JOIN PROD_US9_500167.COH_IDX_PT_TYPE PT_TYPE
+    ON A.IDW_PATIENT_ID = PT_TYPE.IDW_PATIENT_ID AND PT_TYPE.cohort_id= '2016'
+    WHERE A.PATIENT_GENDER IN ('1', '2','F','M')
+    AND A.IDW_PROVIDER_ID IS NOT NULL
+    AND A.IDW_PAYER_ID IS NOT NULL
+    AND A.PATIENT_AGE IS NOT NULL
+	
+	
+	// Long = 1450504656
+
+
+compute stats PROD_US9_500167.tts_cv_T_RX_DIM_DATA_2016
+
+DROP TABLE PROD_US9_500167.tts_cv_T_1_INDEX_FILE_RX_2016
+
+CREATE TABLE PROD_US9_500167.tts_cv_T_1_INDEX_FILE_RX_2016 AS
+    SELECT IDW_PATIENT_ID, OLD_TTS_REGION TTS_REGION, OLD_TTS_STATE TTS_STATE, OLD_TTS_CBSA_CD TTS_CBSA_CD,OLD_TTS_COUNTY TTS_COUNTY, COUNT(*) AS REC_CNT 
+    FROM PROD_US9_500167.tts_cv_T_RX_DIM_DATA_2016 A 
+    GROUP BY IDW_PATIENT_ID, OLD_TTS_REGION, OLD_TTS_STATE, OLD_TTS_CBSA_CD,OLD_TTS_COUNTY
+
+CREATE TABLE PROD_US9_500167.TTS_CV_T_INDEX_FILE_RX_2016 AS 
+WITH Q2 AS
+  ( WITH Q1 AS
+  ( SELECT IDW_PATIENT_ID, TTS_REGION, TTS_STATE, TTS_CBSA_CD,TTS_COUNTY, SUM(REC_CNT) AS REC_CNT FROM PROD_US9_500167.tts_cv_T_1_INDEX_FILE_RX_2016
+    GROUP BY IDW_PATIENT_ID, TTS_REGION, TTS_STATE, TTS_CBSA_CD,TTS_COUNTY )
+SELECT IDW_PATIENT_ID, TTS_REGION, TTS_STATE, TTS_CBSA_CD,TTS_COUNTY , ROW_NUMBER() OVER ( PARTITION BY IDW_PATIENT_ID ORDER BY REC_CNT DESC) AS RNK 
+  FROM Q1
+  )
+  SELECT IDW_PATIENT_ID, TTS_REGION, TTS_STATE, TTS_CBSA_CD,TTS_COUNTY  FROM 
+ Q2 WHERE RNK = 1
+
+ 
+ done..................
+ 
+ 
+CREATE TABLE PROD_US9_500167.TTS_CV_RX_DIM_DATA_2016 AS
+    SELECT 
+      A.CLAIM_ID,
+      A.DATE_OF_SERVICE,
+      A.DAYS_SUPPLY,
+     -- A.DISPENSING_FEE_PAID,
+      A.FILL_NBR,
+      A.PATIENT_AGE,
+     -- A.AWP_UNIT_PRICE,
+      A.PATIENT_GENDER,
+      A.IDW_PATIENT_ID,
+      A.IDW_PAYER_ID,
+      A.IDW_PHARMACY_ID,
+      A.IDW_PRODUCT_ID,
+      A.IDW_PROVIDER_ID,
+      --A.INCENTIVE_AMT_PAID,
+     -- A.INGREDIENT_COST_PAID,
+      A.MONTH_ID,
+     -- A.NDC_CD,
+     -- A.OTHER_PAYER_AMT_PAID,
+      A.PATIENT_OPC,
+      A.PATIENT_PAY_AMT,
+      A.PATIENT_ZIP,
+      A.PHARMACY_ZIP,
+      A.QUANTITY_DISPENSED,
+      A.RETAIL_DOL_AMT,      
+      A.TOTAL_AMT_PAID,     
+      A.MARKET_ID,
+      A.MIN_DOS,
+      A.MIN_SSD,
+      A.TTS_GENDER,
+      A.TTS_SPECIALTY_DESC,
+      A.TTS_SPECIALTY_ID,
+      A.TTS_PAY_TYPE_ID,
+      A.TTS_PAY_TYPE_DESC,
+      B.TTS_REGION,
+      B.TTS_STATE,
+      B.TTS_CBSA_CD,
+      B.TTS_COUNTY,
+      A.TTS_AGE_ID,
+      A.TTS_AGE_DESC,
+      A.TTS_PNAME,
+      A.TTS_ROUTE,
+      A.TTS_TCRF4_DESC,
+      A.TTS_PROD_GROUP,
+      A.TTS_SUB_CLASS,
+      A.TTS_CLASS,
+      A.TTS_CLASS_TYPE,
+      A.TTS_PT_TYPE
+    FROM PROD_US9_500167.TTS_CV_T_RX_DIM_DATA_2016 A INNER JOIN PROD_US9_500167.TTS_CV_T_INDEX_FILE_RX_2016 B
+    ON A.IDW_PATIENT_ID = B.IDW_PATIENT_ID
+
+
+
+--------------------------------------------
+RX EXTRACT
+CREATE TABLE  PROD_US9_500167.tts_cv_rx_opc_pln_2017  AS
+with  q1 as 
+(    
+            SELECT 
+                    A.CHNL_CD,
+                    A.CLAIM_ID,
+                    A.SVC_DT AS DATE_OF_SERVICE,
+                    A.DAYS_SUPPLY_CNT AS DAYS_SUPPLY,     
+                    A.FILL_NBR,                
+                    A.PAT_AGE_NBR AS PATIENT_AGE,     
+                    A.PAT_GENDER_CD AS PATIENT_GENDER,
+                    A.PATIENT_ID AS IDW_PATIENT_ID,
+                    A.PHARMACY_ID AS IDW_PHARMACY_ID,
+                    A.PRODUCT_ID AS IDW_PRODUCT_ID,
+                    A.PLAN_ID ORIG_PLAN_ID, 
+                    nvl(E.PLAN_ID,A.PLAN_ID) PLAN_ID, 
+                    0 AS IDW_PAYER_ID,  
+                    A.PROVIDER_ID ORIG_PROV_ID, 
+                    nvl(G.PROVIDER_ID,A.PROVIDER_ID) IDM_PROVIDER_ID,   
+                    A.MONTH_ID,
+                    A.COPAY_AMT AS COPAY_AMT,
+                    --A.PAT_OPC_AMT AS PATIENT_OPC,
+                    A.PAT_PAY_AMT AS PATIENT_PAY_AMT,
+                    A.PAT_ZIP3_CD AS PATIENT_ZIP,
+                    D.ZIP AS PHARMACY_ZIP,  --A.OTLT_ZIP AS PHARMACY_ZIP,
+                    A.DSPNSD_QTY AS QUANTITY_DISPENSED,
+                    A.CUST_PRC AS RETAIL_DOL_AMT,           
+                    A.TOTAL_PAID_AMT AS TOTAL_AMT_PAID,       
+                    B.MARKET_ID ,
+                    B.MIN_DOS ,
+                    B.MIN_SSD,
+                    A.SUPPLIER_ID,
+                    A.PAY_TYP_CD,
+                    CASE WHEN C.CLAIM_ID IS NULL THEN '0' ELSE '1' END AS ACTN_TBL_MTCH,
+                    C.COPAY_AMT_ACTN_CD,
+                    C.PAT_PAY_ACTN_CD,
+                    C.CUST_PRICE_ACTN_CD,
+                    CASE WHEN A.PAY_TYP_CD = 1  THEN A.CUST_PRC
+                       WHEN nvl(C.PAT_PAY_ACTN_CD,'!') IN ('!',' ','Z','H') THEN A.PAT_PAY_AMT
+                       WHEN nvl(C.COPAY_AMT_ACTN_CD,'!') IN ('!',' ','Z','H') THEN A.COPAY_AMT
+                    ELSE NULL
+                    END AS STG_OPC_AMT,
+                    MOD(PATIENT_ID,20) PAT_MOD
+               FROM prod_df2_us9.v_rx_trans_ss A 
+               INNER JOIN PROD_US9_500167.tts_cv_MERGE_CDM_DX_RX_PAT_2017 B
+                 ON A.PATIENT_ID = B.IDW_PATIENT_ID
+               LEFT OUTER JOIN prod_df2_us9.v_rx_trans_actn C
+               ON A.MONTH_ID=C.MONTH_ID 
+               AND A.CLAIM_ID=C.CLAIM_ID
+               LEFT OUTER JOIN prod_df2_us9.V_PHARMACY D    --RD ADDED
+                ON A.PHARMACY_ID=D.PHARMACY_ID    
+               LEFT OUTER JOIN PROD_US9_500167.V_PDM_PLAN E
+                ON A.PLAN_ID = E.FR_PLAN_ID
+               LEFT OUTER JOIN PROD_DF2_US9.V_PROVIDER G
+                ON A.PROVIDER_ID=G.PROVIDER_ID
+               WHERE A.MONTH_ID = 201701
+                AND A.SVC_DT >= B.MIN_SSD 
+                AND A.PATIENT_ID > 0
+      ) 
+          SELECT RX.*, CASE WHEN nvl(RX.STG_OPC_AMT, -9999) > nvl(RX.RETAIL_DOL_AMT,-9999) THEN RX.RETAIL_DOL_AMT
+                              ELSE RX.STG_OPC_AMT
+                       END AS PATIENT_OPC
+          FROM q1   RX
+
+
+select idw_patient_id, PAT_PAY_ACTN_CD, COPAY_AMT_ACTN_CD, pay_typ_cd,  copay_amt, PATIENT_PAY_AMT,  STG_OPC_AMT, RETAIL_DOL_AMT, PATIENT_OPC from PROD_US9_500167.tts_cv_rx_opc_pln_2017
+where pay_typ_cd <> 1 and copay_amt < 0 and PATIENT_PAY_AMT < 0 
+--------------------------------------------------------------------------------
+distinct DX pat list 
+
+CREATE TABLE prod_us9_500167.tts_cv_dx_pat_pln AS
+SELECT DISTINCT ROUND(MONTH_ID/100) claim_yr, 'DX' data_typ_cd ,IDW_PATIENT_ID patient_id , IDW_PAYER_ID plan_id
+FROM PROD_US9_500167.tts_cv_DX_DIM_DATA_2016
+UNION
+SELECT DISTINCT ROUND(MONTH_ID/100) claim_yr, 'DX' data_typ_cd ,IDW_PATIENT_ID patient_id , IDW_PAYER_ID plan_id
+FROM PROD_US9_500167.tts_cv_DX_DIM_DATA_2017
+UNION
+SELECT DISTINCT ROUND(MONTH_ID/100) claim_yr, 'DX' data_typ_cd ,IDW_PATIENT_ID patient_id , IDW_PAYER_ID plan_id
+FROM PROD_US9_500167.tts_cv_DX_DIM_DATA_2018
+
+adding RX pats to above table
+
+CREATE TABLE prod_us9_500167.tts_cv_pat_pln AS
+SELECT * from prod_us9_500167.tts_cv_dx_pat_pln
+UNION
+SELECT DISTINCT ROUND(MONTH_ID/100) claim_yr, 'RX' data_typ_cd ,IDW_PATIENT_ID patient_id , IDW_PAYER_ID plan_id
+FROM PROD_US9_500167.tts_cv_rx_clm_extr_2016 A where exists (select 1 from prod_us9_500167.tts_cv_dx_pat_pln b where a.idw_patient_id=b.patient_id)
+UNION
+SELECT DISTINCT ROUND(MONTH_ID/100) claim_yr, 'RX' data_typ_cd ,IDW_PATIENT_ID patient_id , IDW_PAYER_ID plan_id
+FROM PROD_US9_500167.tts_cv_rx_clm_extr_2017 A where exists (select 1 from prod_us9_500167.tts_cv_dx_pat_pln b where a.idw_patient_id=b.patient_id)
+UNION
+SELECT DISTINCT ROUND(MONTH_ID/100) claim_yr, 'RX' data_typ_cd ,IDW_PATIENT_ID patient_id , IDW_PAYER_ID plan_id
+FROM PROD_US9_500167.tts_cv_rx_clm_extr_2018 A where exists (select 1 from prod_us9_500167.tts_cv_dx_pat_pln b where a.idw_patient_id=b.patient_id)
+
+CREATE TABLE prod_us9_500167.tts_cv_pat_pref_extr AS
+select DISTINCT pat_id, pat_gender_cd, pat_zip_3,
+MOST_RCNT_RX_PAYER_PLN_ID_CCY,
+MOST_FREQ_RX_PAYER_PLN_ID_CCY, 
+MOST_RCNT_RX_PAYER_PLN_ID_PCY,
+MOST_FREQ_RX_PAYER_PLN_ID_PCY,
+MOST_RCNT_RX_PAYER_PLN_ID_P2CY,
+MOST_FREQ_RX_PAYER_PLN_ID_P2CY,
+MOST_RCNT_DX_PAYER_PLN_ID_CCY,
+MOST_FREQ_DX_PAYER_PLN_ID_CCY, 
+MOST_RCNT_DX_PAYER_PLN_ID_PCY,
+MOST_FREQ_DX_PAYER_PLN_ID_PCY,
+MOST_RCNT_DX_PAYER_PLN_ID_P2CY,
+MOST_FREQ_DX_PAYER_PLN_ID_P2CY
+from PROD_DF2_US9_DPT.v_us9_pref_final_extrt  A
+INNER JOIN prod_us9_500167.tts_cv_dx_pat_pln B
+ON A.PAT_ID=B.IDW_PATIENT_ID
+where proc_mth = 201809
+

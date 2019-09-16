@@ -1,0 +1,813 @@
+Oracle schema :   B1204411_SANOFI_TTS_CV_DM / B1204411@PDM 
+
+
+  PROCEDURE POP_CR_RX_TB4 (IN_TTS_YEAR IN NUMBER, 1)
+   AS
+      /* PROGRAM VARIABLES */
+
+      V_SQL              LONG;    
+      V_SQL_1            LONG;
+      V_TABNAMEFNL       VARCHAR2 (100);
+      V_TABNAME_RX       VARCHAR2 (100);
+      V_CTR              NUMBER;
+      V_MKTID            NUMBER;
+      V_MAX              NUMBER;
+      V_EXIT             NUMBER := 0;
+      V_STUBTYPE         VARCHAR2 (1);
+      V_BRL              VARCHAR2 (100);
+      V_PAT_CC           VARCHAR2 (100);
+
+      V_DIM_HMR_STUB     VARCHAR2 (30);
+
+      /*Logging Variables */
+
+      V_LOG_ID_MAIN      NUMBER := 0;
+      V_LOG_ID           NUMBER := 0;
+      V_PROCESS_NAME     VARCHAR2 (100)
+                            := 'CREATE TB4 TTS YEAR ' || IN_TTS_YEAR;
+      V_PROCEDURE_NAME   VARCHAR2 (100) := 'POP_CR_RX_TB4';
+      V_ROWS             NUMBER := 0;
+      V_ERRCODE          VARCHAR2 (100) := NULL;
+      V_ERRMSG           VARCHAR2 (4000) := NULL;
+      V_STEPNUM          NUMBER;
+      V_SUBTABLELABEL    VARCHAR2 (100);
+      V_TMP_2  VARCHAR2 (100);
+      V_TMP_3  VARCHAR2 (100); 
+      tmpVar number:=0;
+      V_TMP_PAYER varchar2(100);
+     -- IN_REPORT_TYPE number:=1;
+      V_RPT_START NUMBER;
+      V_RPT_END NUMBER;
+   BEGIN
+
+
+   IF  IN_REPORT_TYPE=1 then 
+
+    V_RPT_START:=1;
+     V_RPT_END:=3;
+   V_TMP_PAYER:='';
+END IF;
+
+      V_TABNAME_RX := 'RX_RPT_DATA_2017';  --454070469
+      V_TABNAMEFNL := 'RX_TB4_2017';  -- output
+      V_PAT_CC :=  'PAT_COMPLIC_COMORB_2017';--67711415
+      V_DIM_HMR_STUB := 'DIM_HMR_STUB';  --183
+
+      V_SQL_1 := '';
+
+--k loop for k=1 fro table 4 and k=2 for table 4a that is table 40
+For K in 1..2 loop
+      -- J loop for ACCOUNT_ID--
+      FOR J IN V_RPT_START..V_RPT_END LOOP
+      --I loop run two times one PNAME and other time for Patient type--
+      FOR I IN 1 .. 2
+      LOOP
+         IF I = 1
+         THEN
+            V_SUBTABLELABEL := ' TTS_PNAME';
+         ELSE
+            V_SUBTABLELABEL := ' TTS_PT_TYPE';
+         END IF;
+
+         /* CREATE RPT DATA */
+         V_CTR := 1;
+	   --- For V_CTR in 1..14 loop
+         LOOP
+            IF V_CTR = 1
+            THEN
+               V_STUBTYPE := 'A';
+               V_BRL := 'A.DX_AGE_GROUP';
+            ELSIF V_CTR = 2
+            THEN
+               V_STUBTYPE := 'G';
+               V_BRL := 'A.DX_GENDER';
+            ELSIF V_CTR = 3
+            THEN
+               V_STUBTYPE := 'C';
+               V_BRL :=
+                  'DECODE(A.DX_COMPLICATION_CNT,''0'',''0'',''1'',''1'',''2'',''2'',''> 2'')';
+            ELSIF V_CTR = 4
+            THEN
+               V_STUBTYPE := 'M';
+               V_BRL :=
+                  'DECODE(A.DX_COMORBIDITY_CNT,''0'',''0'',''1'',''1'',''2'',''2'', ''2+'')';
+            ELSIF V_CTR = 5
+            THEN
+               V_STUBTYPE := 'P';
+               V_BRL := 'A.TTS_PAY_TYPE_DESC';
+               
+            ELSIF V_CTR = 6
+            THEN
+               V_STUBTYPE := 'S';
+               V_BRL := 'A.TTS_SPECIALTY_DESC';
+            ELSIF V_CTR = 7
+            THEN
+               V_STUBTYPE := 'T';
+               V_BRL := '''TOTAL''';
+            ELSIF V_CTR = 8
+            THEN
+               V_STUBTYPE := 'B';
+               V_BRL := 'A.OPC_GROUP';
+            ELSIF V_CTR = 9
+            THEN
+               V_STUBTYPE := 'L';
+               V_BRL := 'A.LOT_GROUP';
+            ELSIF V_CTR = 10
+            THEN                                                
+               V_STUBTYPE := 'J';
+               V_BRL := 'A.TTS_PT_TYPE';
+            ELSIF V_CTR = 11
+            THEN                                                
+               V_STUBTYPE := 'E';
+               V_BRL := 'B.TTS_CATEGORY_DESC';
+           
+
+            ELSIF V_CTR = 12
+            THEN                                                
+               V_STUBTYPE := 'F';
+               V_BRL := 'A.LDL_RESULT';
+            ELSIF V_CTR = 13
+            THEN                                                
+               V_STUBTYPE := 'H';
+               V_BRL := 'A.HDL_RESULT';
+            ELSIF V_CTR = 14
+            THEN                                                
+               V_STUBTYPE := 'I';
+               V_BRL := 'A.TRIGY_RESULT';
+            ELSIF V_CTR = 15 THEN  
+              V_STUBTYPE := 'N';
+              V_BRL := 'DECODE(A.STATIN_COUNT,''0'',''0'',''1'',''1'',''2'',''2'', ''2+'')';     
+            ELSE
+               EXIT;
+            END IF;
+			
+--substr(c_2015,-1,1)
+
+          
+               --  IF V_CTR NOT IN ( 10, 11, 12) THEN
+               IF V_CTR NOT IN (5,10,
+                                11,
+                                12,
+                                13,
+                                14)
+               THEN
+                  V_SQL_1 := V_TABNAME_RX
+                     
+               ELSIF V_CTR = 10
+               THEN
+                  V_SQL_1 :=
+                        V_TABNAME_RX A 
+                    INNER JOIN ' || V_DIM_HMR_STUB || ' B
+                     ON UPPER(A.TTS_PT_TYPE) =UPPER(B.RPT_DATA_VALUE)
+                       AND B.STUBTYPE = ''J''';
+               ELSIF V_CTR = 11
+               THEN
+                  V_SQL_1 :=
+                        V_TABNAME_RX A 
+                    INNER JOIN  '|| V_PAT_CC || ' B
+                    ON A.IDW_PATIENT_ID = B.IDW_PATIENT_ID
+                    AND  B.TTS_COMORBIDITY_FLAG = 1
+                    AND A.MARKET_ID = B.MARKET_ID';
+               ELSIF V_CTR = 12
+               THEN
+                  V_SQL_1 :=
+                        V_TABNAME_RX
+                      A
+                    INNER JOIN '
+                     || V_DIM_HMR_STUB
+                     || ' B
+                    ON UPPER(A.LDL_RESULT) =UPPER(B.RPT_DATA_VALUE)
+                       AND B.STUBTYPE = ''F''';
+               ELSIF V_CTR = 13
+               THEN
+                  V_SQL_1 :=
+                        V_TABNAME_RX
+                      A
+                    INNER JOIN '
+                     || V_DIM_HMR_STUB
+                     || ' B
+                    ON UPPER(A.HDL_RESULT) =UPPER(B.RPT_DATA_VALUE)
+                       AND B.STUBTYPE = ''H''';
+               ELSIF V_CTR = 14
+               THEN
+                  V_SQL_1 :=
+                        V_TABNAME_RX
+                      A
+                    INNER JOIN '
+                     || V_DIM_HMR_STUB
+                     || ' B
+                    ON UPPER(A.TRIGY_RESULT) =UPPER(B.RPT_DATA_VALUE)
+                       AND B.STUBTYPE = ''I''';
+               ELSIF V_CTR = 5 THEN
+                V_SQL_1 := V_TABNAME_RX  A
+                    INNER JOIN '||V_DIM_HMR_STUB||' B
+                    ON UPPER(A.TTS_PAY_TYPE_DESC) =UPPER(B.RPT_DATA_VALUE)
+                       AND B.STUBTYPE = ''P''  ';
+               
+               END IF;
+
+        IF J=1 then
+            V_TMP_2:=' null ';
+            V_TMP_3 := '' || case when k=2 then ' AND DX_COMORBIDITY_CNT>0 ' end ;
+        ELSIF J=2 then
+            V_TMP_2:=' ACCOUNT_ID ';
+            V_TMP_3 := ' AND A.ACCOUNT_ID is not null ' || case when k=2 then ' AND DX_COMORBIDITY_CNT>0 ' end;
+        ELSIF J=3 then    
+            V_TMP_2:=' 9999 ';
+            V_TMP_3 := ' AND A.ACCOUNT_ID is not null ' || case when k=2 then ' AND DX_COMORBIDITY_CNT>0 ' end;
+        END IF;
+        
+
+                  V_SQL :=
+                        '  Insert /*+ append nologging */ into  '
+                     || V_TABNAMEFNL
+                     || ' (
+        MARKET_ID,
+        YR,
+        TABLENO,
+        ACCOUNT_ID,
+        STUBTYPE,
+        SUBTABLELABEL,
+        BRL,
+        NATION,
+        REGION,
+        ST,
+        CBSA_CD,
+        COUNTY  ,
+        PCNT,
+        PPCT,
+        TOTCHG,
+        AVGCHG
+      )
+      SELECT
+          '
+                     || V_MKTID
+                     || ' AS MARKET_ID,
+          '
+                     || IN_TTS_YEAR
+                     || ' AS YR, ' || 
+          case when k=1 then 4 else 40 end || ' TABLENO,
+           X.ACCOUNT_ID, '''|| V_STUBTYPE || ''' AS STUBTYPE,
+          X.SUBTABLELABEL AS SUBTABLELABEL,
+          X.BRL,
+          X.NATION,
+          X.REGION,
+          X.ST,
+          X.CBSA_CD,
+          X.COUNTY,
+          X.PCNT,
+          ROUND(X.PCNT/Y.PCNT,4) PPCT,
+          X.TOTCHG,
+          X.AVGCHG
+      FROM
+         
+		 
+		 
+		 
+		 ( 
+         
+         SELECT MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, 
+         NVL(A.TTS_COUNTY, NVL(A.TTS_CBSA_CD, NVL(A.TTS_STATE, NVL(A.TTS_REGION, ''9999'')))) NATION,
+         A.TTS_REGION REGION,
+                  A.TTS_STATE ST,
+                  A.TTS_CBSA_CD CBSA_CD,
+                  A.TTS_COUNTY COUNTY,
+         COUNT(DISTINCT A.IDW_PATIENT_ID) PCNT,
+          SUM(case when A.RETAIL_DOL_AMT<= 10 * A.AVG_DOL_AMT then A.RETAIL_DOL_AMT end  ) TOTCHG,
+          SUM(case when A.RETAIL_DOL_AMT<= 10 * A.AVG_DOL_AMT then A.RETAIL_DOL_AMT end  )/COUNT(DISTINCT A.IDW_PATIENT_ID) AVGCHG
+          FROM 
+		  
+		 
+
+		 (
+         
+         SELECT distinct A.MARKET_ID, A.CLAIM_ID,A.IDW_PATIENT_ID,NVL(to_Char(A.'|| V_SUBTABLELABEL|| '),''Total'') SUBTABLELABEL,
+                  '
+                     || V_BRL
+                     || ' AS BRL, '
+                     || V_TMP_2 || ' AS ACCOUNT_ID,
+                 
+                  A.TTS_REGION ,
+                  A.TTS_STATE ,
+                  A.TTS_CBSA_CD,
+                  A.TTS_COUNTY,
+                  A.RETAIL_DOL_AMT,
+                  A.AVG_DOL_AMT
+                  
+      FROM '
+                     || V_SQL_1
+                     || '
+      WHERE A.MARKET_ID = '
+                     || V_MKTID
+                     
+      
+      || V_TMP_3 || ' 
+      ) A
+	  
+	  
+	  
+            GROUP BY GROUPING SETS
+            (
+            --( A.MARKET_ID,'|| V_BRL || '),
+            ( A.MARKET_ID,SUBTABLELABEL, BRL,ACCOUNT_ID ),
+            ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_REGION),
+            ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_STATE),
+            ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_CBSA_CD),
+             ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_COUNTY)
+            )
+          ) X
+		  
+		  
+		  
+		  
+		  
+          INNER JOIN 
+          (SELECT A.MARKET_ID,'
+                      || V_TMP_2 || ' AS ACCOUNT_ID, '|| V_BRL
+                     || ' AS BRL, ' || ' 
+                  NVL(A.TTS_COUNTY, NVL(A.TTS_CBSA_CD, NVL(A.TTS_STATE, NVL(A.TTS_REGION, ''9999'')))) NATION,
+                  COUNT(DISTINCT A.IDW_PATIENT_ID) PCNT
+            
+      FROM '
+                     || V_SQL_1
+                     || '
+      WHERE A.MARKET_ID = '|| V_MKTID|| '                         ' 
+      || V_TMP_3 || '
+            GROUP BY GROUPING SETS
+            (
+            --( A.MARKET_ID),
+            ( A.MARKET_ID,'|| V_BRL||','  || V_TMP_2 || '),
+            ( A.MARKET_ID, A.TTS_REGION,'|| V_BRL||','  || V_TMP_2 || '),
+            ( A.MARKET_ID, A.TTS_STATE,'|| V_BRL||','  || V_TMP_2 || '),
+            ( A.MARKET_ID, A.TTS_CBSA_CD,'|| V_BRL||','  || V_TMP_2 || '),
+            ( A.MARKET_ID, A.TTS_COUNTY,'|| V_BRL||','  || V_TMP_2 || ')
+            )
+            ) Y
+			
+			
+			
+            ON X.MARKET_ID = Y.MARKET_ID
+               AND X.NATION = Y.NATION
+               AND X.BRL=Y.BRL
+                AND nvl(X.ACCOUNT_ID,-1) = nvl(Y.ACCOUNT_ID,-1)';
+             --  END IF;
+
+			 
+			 
+			 tmpVar:=tmpVar+1;
+               V_LOG_ID := PKG_CV.NEXT_SEQ_VAL ('SEQ_TTS_LOG');
+               PKG_CV.WRITE_LOG (
+                  V_LOG_ID,
+                  V_PROCESS_NAME,
+                  V_PROCEDURE_NAME,
+                   tmPvar ||  
+                    
+                  '   SUBTABLELABEL '
+                  || V_SUBTABLELABEL
+                  || ' STUB TYPE '
+                  || V_STUBTYPE
+                  || ' BRL '
+                  || V_BRL,
+                  'RUNNING',
+                  V_SQL);
+               PKG_EXEC_DDL.P_EXEC_REMOTE_DDL (V_SQL);
+               V_ROWS := SQL%ROWCOUNT;
+               COMMIT;
+               PKG_CV.UPDATE_LOG (V_LOG_ID,
+                                    'COMPLETE',
+                                    V_ROWS,
+                                    V_ERRCODE,
+                                    V_ERRMSG);
+          
+
+            END LOOP;
+
+            V_CTR := V_CTR + 1;
+             IF V_CTR in (3) then
+             V_CTR := V_CTR + 1;
+             END IF;
+         END LOOP;
+      END LOOP;
+END LOOP;
+END LOOP;
+
+
+END POP_CR_RX_TB4;
+=====================================================
+
+solution ====================
+package com.rxcorp.cvupdatedqueries
+
+import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions._
+
+
+object Cvmarket_Updatedcode {
+  val spark: SparkSession = SparkSession.builder
+    .appName("Convertingcvprocedures")
+    .master("yarn")
+    .config("spark.dynamicAllocation.enabled", "true")
+    .config("spark.hadoop.hive.exec.dynamic.partition", "true")
+    .config("spark.shuffle.service.enabled", "true")
+    .config("spark.hadoop.hive.exec.dynamic.partition.mode", "nonstrict")
+    .config("spark.hadoop.hive.support.concurrency", "true")
+    .config("spark.sql.crossJoin.enabled", "true")
+    .config("spark.sql.hive.convertMetastoreParquet", "true")
+    .enableHiveSupport()
+    .getOrCreate()
+
+  def main(args: Array[String]): Unit = {
+
+    //Variables
+
+    val IN_TTS_YEAR = 2018
+    var V_SQL: String = ""
+    var V_SQL_1: String = ""
+    var V_TABNAMEFNL: String = ""
+    var V_TABNAME_RX: String = ""
+    //var v_ctr: Int = 1
+    var V_MKTID: Int = 1
+    //var V_MAX:Int=_
+    //var V_EXIT:Int=_
+    var V_STUBTYPE: String = ""
+    var V_BRL: String = ""
+    var V_PAT_CC: String = ""
+    var V_DIM_HMR_STUB: String = ""
+
+
+    var V_SUBTABLELABEL: String = ""
+    var V_TMP_2: String = " "
+    var V_TMP_3: String = " "
+   // var tmpVar: Int = 0
+    var V_TMP_PAYER: String = ""
+
+
+    var V_RPT_START: Int = 2
+    var V_RPT_END: Int = 3
+
+    var IN_REPORT_TYPE = 1
+
+
+
+    if (IN_REPORT_TYPE == 1) {
+      V_RPT_START = 2
+      V_RPT_END = 3
+      V_TMP_PAYER = ""
+    }
+
+    V_TABNAME_RX = "prod_us9_500167.tts_cv_rx_rpt_data_2018_T A"
+    V_TABNAMEFNL = "prod_us9_500167.tts_cv_RX_TB40_2017"
+    V_PAT_CC = "prod_us9_500167.TTS_CV_PAT_COMP_COMORB_2018_T"
+    V_DIM_HMR_STUB = "prod_us9_500167.TTS_CV_DIM_HMR_STUB"
+    V_SQL_1 = " "
+
+    for (k <- 1 to 1) {
+      for (j <- V_RPT_START to V_RPT_END) {
+        for (i <- 1 to 2) {
+          if (i == 1) {
+            V_SUBTABLELABEL = " TTS_PNAME"
+          }
+          else
+          {
+            V_SUBTABLELABEL = " TTS_PT_TYPE"
+          }
+
+          for (v_ctr <- 1 to 15) {
+            if (v_ctr == 1) {
+              V_STUBTYPE = "A"
+              V_BRL = "A.DX_AGE_GROUP"
+              V_SQL_1 = V_TABNAME_RX
+
+            } else if (v_ctr == 2) {
+              V_STUBTYPE = "G"
+              V_BRL = "A.DX_GENDER"
+              V_SQL_1 = V_TABNAME_RX
+            }
+            else if (v_ctr == 3) {
+              V_STUBTYPE = "C"
+              V_BRL =
+                s""" CASE  A.DX_COMPLICATION_CNT
+                         WHEN 0 THEN "0"
+                         WHEN 1 THEN "1"
+                         WHEN 2 THEN "2"
+                         ELSE
+                         ">2"
+                         END """
+              V_SQL_1 = V_TABNAME_RX
+            }
+            else if (v_ctr == 4) {
+              V_STUBTYPE = "M"
+              V_BRL =
+                s""" CASE  A.DX_COMPLICATION_CNT
+                         WHEN 0 THEN "0"
+                         WHEN 1 THEN "1"
+                         WHEN 2 THEN "2"
+                         ELSE
+                         "2+"
+                         END """
+              V_SQL_1 = V_TABNAME_RX
+
+            }
+            else if (v_ctr == 5) {
+              V_STUBTYPE = "P"
+              V_BRL = "A.TTS_PAY_TYPE_DESC"
+              V_SQL_1 = s" $V_TABNAME_RX INNER JOIN  $V_DIM_HMR_STUB B ON UPPER(A.TTS_PAY_TYPE_DESC) =UPPER(B.RPT_DATA_VALUE) " +
+                s"AND B.STUBTYPE ='P' "
+            }
+            else if (v_ctr == 6) {
+              V_STUBTYPE = "S"
+              V_BRL = "A.TTS_SPECIALTY_DESC"
+              V_SQL_1 = V_TABNAME_RX
+
+            }
+            else if (v_ctr == 7) {
+              V_STUBTYPE = "T"
+              V_BRL = "'TOTAL'"
+              V_SQL_1 = V_TABNAME_RX
+            }
+
+            else if (v_ctr == 8) {
+              V_STUBTYPE = "B"
+              V_BRL = "A.OPC_GROUP"
+              V_SQL_1 = V_TABNAME_RX
+
+            }
+
+            else if (v_ctr == 9) {
+              V_STUBTYPE = "L"
+              V_BRL = "A.LOT_GROUP"
+              V_SQL_1 = V_TABNAME_RX
+            }
+
+            else if (v_ctr == 10) {
+              V_STUBTYPE = "J"
+              V_BRL = "A.TTS_PT_TYPE"
+              V_SQL_1 = s" $V_TABNAME_RX INNER JOIN $V_DIM_HMR_STUB B ON UPPER($V_BRL) =UPPER(B.RPT_DATA_VALUE) AND B.STUBTYPE = 'J' "
+            }
+            else if (v_ctr == 11) {
+              V_STUBTYPE = "E"
+              V_BRL = "B.TTS_CATEGORY_DESC"
+              V_SQL_1 = s"  $V_TABNAME_RX INNER JOIN $V_PAT_CC B ON A.IDW_PATIENT_ID = B.IDW_PATIENT_ID  AND  B.TTS_COMORBIDITY_FLAG = 1  " +
+                s"AND A.MARKET_ID = B.MARKET_ID"
+            }
+            else if (v_ctr == 12) {
+              V_STUBTYPE = "F"
+              V_BRL = "A.LDL_RESULT"
+              V_SQL_1 = s" $V_TABNAME_RX INNER JOIN $V_DIM_HMR_STUB B ON UPPER($V_BRL) =UPPER(B.RPT_DATA_VALUE) AND B.STUBTYPE = 'F' "
+            }
+            else if (v_ctr == 13) {
+              V_STUBTYPE = "H"
+              V_BRL = "A.HDL_RESULT"
+              V_SQL_1 = s" $V_TABNAME_RX INNER JOIN $V_DIM_HMR_STUB B ON UPPER($V_BRL) =UPPER(B.RPT_DATA_VALUE) AND B.STUBTYPE = 'H' "
+            }
+            else if (v_ctr == 14) {
+              V_STUBTYPE = "I"
+              V_BRL = "A.TRIGY_RESULT"
+              V_SQL_1 = s"  $V_TABNAME_RX INNER JOIN $V_DIM_HMR_STUB B ON UPPER($V_BRL) =UPPER(B.RPT_DATA_VALUE) AND B.STUBTYPE = 'I' "
+            } else if (v_ctr == 15) {
+              V_STUBTYPE = "N"
+              V_BRL =
+                s""" CASE  A.DX_COMPLICATION_CNT
+                         WHEN 0 THEN "0"
+                         WHEN 1 THEN "1"
+                         WHEN 2 THEN "2"
+                         ELSE
+                         ">2"
+                         END """
+              V_SQL_1 = V_TABNAME_RX
+            }
+
+
+            if (j == 2) {
+              V_TMP_2 = "ACCOUNT_ID"
+              V_TMP_3 = "AND A.ACCOUNT_ID  is not null "
+            }
+
+
+            println("==================================")
+
+        /*    V_SQL =
+              s"""
+      SELECT
+         $V_MKTID AS MARKET_ID,
+         $IN_TTS_YEAR AS YR,
+          40 AS  TABLENO,
+          X.ACCOUNT_ID,  $V_STUBTYPE AS STUBTYPE,
+          X.SUBTABLELABEL AS SUBTABLELABEL,
+          X.BRL,
+          X.NATION,
+          X.REGION,
+          X.ST,
+          X.CBSA_CD,
+          X.COUNTY,
+          X.PCNT,
+          ROUND(X.PCNT/Y.PCNT,4) PPCT,
+          X.TOTCHG,
+          X.AVGCHG
+      FROM
+   (
+     SELECT MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID,
+         NVL(A.TTS_COUNTY, NVL(A.TTS_CBSA_CD, NVL(A.TTS_STATE, NVL(A.TTS_REGION, "9999")))) NATION,
+         A.TTS_REGION REGION,
+                  A.TTS_STATE ST,
+                  A.TTS_CBSA_CD CBSA_CD,
+                  A.TTS_COUNTY COUNTY,
+         COUNT(DISTINCT A.IDW_PATIENT_ID) PCNT,
+          SUM(case when A.RETAIL_DOL_AMT<= 10 * A.AVG_DOL_AMT then A.RETAIL_DOL_AMT end  ) TOTCHG,
+          SUM(case when A.RETAIL_DOL_AMT<= 10 * A.AVG_DOL_AMT then A.RETAIL_DOL_AMT end  )/COUNT(DISTINCT A.IDW_PATIENT_ID) AVGCHG
+          FROM
+   (
+         SELECT distinct A.MARKET_ID, A.CLAIM_ID,A.IDW_PATIENT_ID,NVL(to_Char(A.$V_SUBTABLELABEL),"Total") SUBTABLELABEL,
+           $V_BRL AS BRL,
+           $V_TMP_2 AS ACCOUNT_ID,
+                 A.TTS_REGION ,
+                  A.TTS_STATE ,
+                  A.TTS_CBSA_CD,
+                  A.TTS_COUNTY,
+                  A.RETAIL_DOL_AMT,
+                  A.AVG_DOL_AMT
+                 FROM
+                     $V_SQL_1
+                    WHERE A.MARKET_ID =$V_MKTID
+                    $V_TMP_3
+      ) A
+   GROUP BY A.MARKET_ID,SUBTABLELABEL, BRL,ACCOUNT_ID ,A.TTS_REGION,A.TTS_STATE,A.TTS_CBSA_CD,A.TTS_COUNTY  GROUPING SETS
+            (
+            ( A.MARKET_ID,SUBTABLELABEL, BRL,ACCOUNT_ID ),
+            ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_REGION),
+            ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_STATE),
+            ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_CBSA_CD),
+            ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_COUNTY)
+            )
+          ) X
+INNER JOIN
+          (SELECT A.MARKET_ID,
+                      $V_TMP_2  AS ACCOUNT_ID, $V_BRL AS BRL,
+                  NVL(A.TTS_COUNTY, NVL(A.TTS_CBSA_CD, NVL(A.TTS_STATE, NVL(A.TTS_REGION, "9999")))) NATION,
+                  COUNT(DISTINCT A.IDW_PATIENT_ID) PCNT
+ FROM
+      $V_SQL_1
+     WHERE A.MARKET_ID = $V_MKTID $V_TMP_3
+   GROUP BY  A.MARKET_ID, A.TTS_COUNTY,,$V_BRL,$V_TMP_2,A.TTS_CBSA_CD,A.TTS_STATE,A.TTS_REGION  GROUPING SETS
+            (
+            ( A.MARKET_ID,$V_BRL,$V_TMP_2),
+            ( A.MARKET_ID, A.TTS_REGION,$V_BRL,$V_TMP_2),
+            ( A.MARKET_ID, A.TTS_STATE,$V_BRL,$V_TMP_2),
+            ( A.MARKET_ID, A.TTS_CBSA_CD,$V_BRL,$V_TMP_2),
+            ( A.MARKET_ID, A.TTS_COUNTY,,$V_BRL,$V_TMP_2),
+            )
+            ) Y
+
+ ON X.MARKET_ID = Y.MARKET_ID
+               AND X.NATION = Y.NATION
+               AND X.BRL=Y.BRL
+                AND nvl(X.ACCOUNT_ID,-1) = nvl(Y.ACCOUNT_ID,-1)  """   */
+
+
+
+
+            /*V_SQL =
+              s"""
+                 SELECT
+                       $V_MKTID AS MARKET_ID,
+                       $IN_TTS_YEAR AS YR,
+                        40 AS  TABLENO,
+                        X.ACCOUNT_ID,
+                        X.SUBTABLELABEL AS SUBTABLELABEL,
+                        X.BRL,
+                        X.NATION,
+                        X.REGION,
+                        X.ST,
+                        X.CBSA_CD,
+                        X.COUNTY,
+                        X.PCNT,
+
+                        X.TOTCHG,
+                        X.AVGCHG
+                    FROM
+                 (
+                 SELECT MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID,
+                          NVL(A.TTS_COUNTY, NVL(A.TTS_CBSA_CD, NVL(A.TTS_STATE, NVL(A.TTS_REGION, "9999")))) NATION,
+                          A.TTS_REGION REGION,
+                                   A.TTS_STATE ST,
+                                   A.TTS_CBSA_CD CBSA_CD,
+                                   A.TTS_COUNTY COUNTY,
+                          COUNT(DISTINCT A.IDW_PATIENT_ID) PCNT,
+                           SUM(case when A.RETAIL_DOL_AMT<= 10 * A.AVG_DOL_AMT then A.RETAIL_DOL_AMT end  ) TOTCHG,
+                           SUM(case when A.RETAIL_DOL_AMT<= 10 * A.AVG_DOL_AMT then A.RETAIL_DOL_AMT end  )/COUNT(DISTINCT A.IDW_PATIENT_ID) AVGCHG
+                           FROM
+                     (
+         SELECT distinct A.MARKET_ID, A.CLAIM_ID,A.IDW_PATIENT_ID,NVL(A.$V_SUBTABLELABEL,"Total") SUBTABLELABEL,
+           $V_BRL AS BRL,
+           $V_TMP_2 AS ACCOUNT_ID,
+                 A.TTS_REGION ,
+                  A.TTS_STATE ,
+                  A.TTS_CBSA_CD,
+                  A.TTS_COUNTY,
+                  A.RETAIL_DOL_AMT,
+                  A.AVG_DOL_AMT
+                 FROM
+                     $V_SQL_1 A
+                    WHERE A.MARKET_ID =$V_MKTID
+                    $V_TMP_3   )A
+                 GROUP BY A.MARKET_ID,SUBTABLELABEL, BRL,ACCOUNT_ID ,A.TTS_REGION,A.TTS_STATE,A.TTS_CBSA_CD,A.TTS_COUNTY  GROUPING SETS
+                           (
+                             ( A.MARKET_ID,SUBTABLELABEL, BRL,ACCOUNT_ID ),
+                             ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_REGION),
+                             ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_STATE),
+                             ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_CBSA_CD),
+                             ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_COUNTY)
+                             ))X
+
+       """
+
+*/
+
+            V_SQL=s"""
+                     SELECT
+                                            $V_MKTID AS MARKET_ID,
+                                            $IN_TTS_YEAR AS YR,
+                                             4 AS  TABLENO,
+                                             X.ACCOUNT_ID,'$V_STUBTYPE' AS STUBTYPE,
+                                             X.SUBTABLELABEL AS SUBTABLELABEL,
+                                             X.BRL,
+                                             X.NATION,
+                                             X.REGION,
+                                             X.ST,
+                                             X.CBSA_CD,
+                                             X.COUNTY,
+                                             X.PCNT,
+                                             ROUND(X.PCNT/Y.PCNT,4) PPCT,
+                                             X.TOTCHG,
+                                             X.AVGCHG
+                                         FROM
+                                      (
+                                      SELECT MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID,
+                                               NVL(A.TTS_COUNTY, NVL(A.TTS_CBSA_CD, NVL(A.TTS_STATE, NVL(A.TTS_REGION, "9999")))) NATION,
+                                               A.TTS_REGION REGION,
+                                                        A.TTS_STATE ST,
+                                                        A.TTS_CBSA_CD CBSA_CD,
+                                                        A.TTS_COUNTY COUNTY,
+                                               COUNT(DISTINCT A.IDW_PATIENT_ID) PCNT,
+                                                SUM(case when A.RETAIL_DOL_AMT<= 10 * A.AVG_DOL_AMT then A.RETAIL_DOL_AMT end  ) TOTCHG,
+                                                SUM(case when A.RETAIL_DOL_AMT<= 10 * A.AVG_DOL_AMT then A.RETAIL_DOL_AMT end  )/COUNT(DISTINCT A.IDW_PATIENT_ID) AVGCHG
+                                                FROM
+                                         (
+                              SELECT distinct A.MARKET_ID, A.CLAIM_ID,A.IDW_PATIENT_ID,NVL(A.$V_SUBTABLELABEL,"Total") SUBTABLELABEL,
+                                $V_BRL AS BRL,
+                                $V_TMP_2 AS ACCOUNT_ID,
+                                      A.TTS_REGION ,
+                                       A.TTS_STATE ,
+                                      A.TTS_CBSA_CD,
+                                       A.TTS_COUNTY,
+                                       A.RETAIL_DOL_AMT,
+                                       A.AVG_DOL_AMT
+                                      FROM
+                                          $V_SQL_1
+                                         WHERE A.MARKET_ID =$V_MKTID
+                                         $V_TMP_3   )A
+                                      GROUP BY A.MARKET_ID,SUBTABLELABEL, BRL,ACCOUNT_ID ,A.TTS_REGION,A.TTS_STATE,A.TTS_CBSA_CD,A.TTS_COUNTY  GROUPING SETS
+                                                (
+                                                  ( A.MARKET_ID,SUBTABLELABEL, BRL,ACCOUNT_ID ),
+                                                  ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_REGION),
+                                                  ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_STATE),
+                                                  ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_CBSA_CD),
+                                                  ( A.MARKET_ID,SUBTABLELABEL,BRL,ACCOUNT_ID, A.TTS_COUNTY)
+                                                  ))X
+                                           INNER JOIN
+          (SELECT A.MARKET_ID,
+          $V_TMP_2  AS ACCOUNT_ID, $V_BRL AS BRL,
+             NVL(A.TTS_COUNTY, NVL(A.TTS_CBSA_CD, NVL(A.TTS_STATE, NVL(A.TTS_REGION, "9999")))) NATION,
+             COUNT(DISTINCT A.IDW_PATIENT_ID) PCNT
+              FROM
+              $V_SQL_1
+                          WHERE A.MARKET_ID = $V_MKTID $V_TMP_3
+                         GROUP BY  A.MARKET_ID, A.TTS_COUNTY,$V_BRL,$V_TMP_2,A.TTS_CBSA_CD,A.TTS_STATE,A.TTS_REGION  GROUPING SETS
+                                 (
+                                 ( A.MARKET_ID,$V_BRL,$V_TMP_2),
+                                 ( A.MARKET_ID, A.TTS_REGION,$V_BRL,$V_TMP_2),
+                                 ( A.MARKET_ID, A.TTS_STATE,$V_BRL,$V_TMP_2),
+                                 ( A.MARKET_ID, A.TTS_CBSA_CD,$V_BRL,$V_TMP_2),
+                                 ( A.MARKET_ID, A.TTS_COUNTY,$V_BRL,$V_TMP_2)
+                                 ) ) Y
+                     ON X.MARKET_ID = Y.MARKET_ID
+                                    AND X.NATION = Y.NATION
+                                    AND X.BRL=Y.BRL
+                                     AND nvl(X.ACCOUNT_ID,-1) = nvl(Y.ACCOUNT_ID,-1)
+              """
+
+            println(V_SQL)
+
+            val data = spark.sql(V_SQL)
+           // data.show()
+            data.write.mode("append").saveAsTable("prod_us9_500167.tts_cv_RX_TB4_2018_test3")
+
+
+          } //v_ctr = v_ctr+1 //v_ctr
+        } // I Loop
+      } //J llop
+    } //K loop
+
+  }
+}
+

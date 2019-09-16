@@ -1,0 +1,2431 @@
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+
+
+object CvMainObject {
+  val spark: SparkSession = SparkSession.builder
+    .appName("generating cv tables")
+     .master("yarn")
+    .config("spark.dynamicAllocation.enabled", "true")
+    .config("spark.hadoop.hive.exec.dynamic.partition", "true")
+    .config("spark.shuffle.service.enabled", "true")
+    .config("spark.hadoop.hive.exec.dynamic.partition.mode", "nonstrict")
+    .config("spark.hadoop.hive.support.concurrency", "true")
+    .config("spark.sql.crossJoin.enabled", "true")
+    .config("spark.sql.hive.convertMetastoreParquet", "true")
+    .enableHiveSupport()
+    .getOrCreate()
+
+  def main(args: Array[String]): Unit = {
+    val database = args(0) //"prod_us9_500167"
+    val startYear = args(1).toInt //201401
+    val endYear = args(2).toInt //201812
+    val tableName = args(3).toUpperCase()
+    /*
+     val database = "prod_us9_500167"
+     val startMonthID = 201401
+     val endMonthID = 201812
+     */
+
+    tableName match {
+
+      case "TTS_CV_DX_CLM_EXTRACT"      => new GeneratingDX_CLM_EXTRACT(spark, database, startYear, endYear, tableName).generatedx_clm_extrct_year_data
+      case "TTS_CV_DX_DIM_DATA"         => new GeneratingDX_DIM_Data(spark, database, startYear, endYear, tableName).GenerateDIMDATAtable
+      case "TTS_CV_DX_PAT_PLN"          => new GeneratingDX_PAT_PLN(spark, database, startYear, endYear, tableName).DX_PAT_PLN_Tables
+      case "TTS_CV_DX_RPT_TABLES"       => new GeneratingDX_RPT_TABLES(spark, database, startYear, endYear, tableName).generate_CV_DX_RPT_TABLES
+      case "TTS_CV_DX_YEAR_TMP1"        => new GeneratingDX_TMP1(spark, database, startYear, endYear, tableName).generate_dx_tmp1_table
+      case "TTS_CV_PAT_ALL"             => new GeneratingPAT_ALL(spark, database, startYear, endYear, tableName).generatePAT_ALLtable
+      case "TTS_CV_PAT_PLN"             => new GeneratingCV_PAT_PLN(spark, database, startYear, endYear, tableName).generateCV_PAT_PLN_data
+      case "TTS_CV_PAT_PREF_EXTR"       => new GeneratingPAT_PREF_EXTR(spark, database, startYear, endYear, tableName).generate_pat_pref_extr_data
+      case "TTS_CV_PAT_RX_PREF_EXTR"    => new GeneratingPAT_RX_PREF_EXTR(spark, database, startYear, endYear, tableName).TTS_CV_PAT_PREF_EXTR_tableRX
+      case "TTS_CV_RX_CLM_EXTRACT"      => new GeneratingRX_CLM_Extrct(spark, database, startYear, endYear, tableName).generatetts_cv_Rx_clm_extrct_yearwisedata
+      case "TTS_CV_RX_DIM_DATA"         => new GeneratingRX_DIM_Data(spark, database, startYear, endYear, tableName).generateTTS_CV_RX_DIM_DATA_yearwise_table
+      case "TTS_CV_RX_OPC_PLN"          => new GeneratingRx_Opc_Pln(spark, database, startYear, endYear, tableName).generateTTS_CV_RX_OPC_PLN_yearwise_table
+      case "TTS_CV_T_1_INDEX_FILE_DX"   => new GeneratingT_1_Index_File_Dx(spark, database, startYear, endYear, tableName).generateINDEX_FILE_DX_yearwise_tables
+      case "TTS_CV_T_1_INDEX_FILE_RX"   => new GeneratingT_1_Index_File_Rx(spark, database, startYear, endYear, tableName).genTTS_CV_T_1_INDEX_FILE_RX_yearwise_tables
+      case "TTS_CV_T_DX_DIM_DATA"       => new GeneratingT_Dx_Dim_Data(spark, database, startYear, endYear, tableName).gentts_cv_T_DX_DIM_DATA_yearwise_table
+      case "TTS_CV_T_DX_DIM_DATA_PRE"   => new GeneratingT_Dx_Dim_Data_Pre(spark, database,startYear, endYear, tableName).genTTS_DX_DIM_DATA_yearwise_PRE_table
+      case "TTS_CV_T_RX_DIM_DATA"       => new GeneratingT_Rx_Dim_Data(spark, database, startYear, endYear, tableName).genTTS_CV_T_RX_DIM_DATA_yearwise_table
+      case "TTS_CV_T_RX_DIM_DATA_PRE"   => new GeneratingT_Rx_Dim_Data_Pre(spark, database, startYear, endYear, tableName).genTTS_CV_T_RX_DIM_DATA_yearwise_PRE_Table
+      case "DX_DATAPULL_TABLES"         => new GeneratingDatapull_Tables(spark, database, startYear, endYear, tableName).genrate_datapulltables
+
+
+     case _ =>
+        println("**************************************************************")
+        println("************ERROR: Entered Table Name is invalid**************")
+        println("**************************************************************")
+
+    }
+
+  }
+}
+==============================================
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+class GeneratingCV_PAT_PLN(spark: SparkSession, database: String, startYear:Int, endYear:Int, tableName:String) {
+  def generateCV_PAT_PLN_data = {
+
+    val years = (startYear to endYear).toList
+
+    years.foreach {
+      year => {
+
+        val TTS_CV_RX_CLM_EXTRCT_DF = spark.read.table(s"$database.TTS_CV_RX_CLM_EXTRCT_$year")
+        val TTS_RX_DF = TTS_CV_RX_CLM_EXTRCT_DF
+          .select(
+            lit(s"$year").as("CLAIM_YR"),
+            lit("RX").as("data_typ_cd"),
+            col("idw_patient_id").as("patient_id"),
+            col("plan_id")).distinct
+        /*
+ val tts_cv_Rx_clm_extrct_2017 = spark.read.table(s"$database.tts_cv_Rx_clm_extrct_$year")
+ val tts_2017_RX_df = tts_cv_Rx_clm_extrct_2017
+  .select(
+  lit(s"$year").as("CLAIM_YR"),
+  lit("RX").as("data_typ_cd"),
+  col("idw_patient_id").as("patient_id"),
+  col("plan_id")).distinct
+
+  val tts_cv_Rx_clm_extrct_2018 = spark.read.table(s"$database.tts_cv_Rx_clm_extrct_$year")
+  val tts_2018_RX_df = tts_cv_Rx_clm_extrct_2018
+    .select(
+      lit(s"$year").as("CLAIM_YR"),
+      lit("RX").as("data_typ_cd"),
+      col("idw_patient_id").as("patient_id"),
+      col("plan_id")).distinct
+*/
+        val TTS_CV_DX_CLM_EXTRCT_DF = spark.read.table(s"$database.TTS_CV_DX_CLM_EXTRCT_$year")
+        val TTS_DX_DF = TTS_CV_DX_CLM_EXTRCT_DF
+          .select(
+            lit(s"$year").as("CLAIM_YR"),
+            lit("DX").as("data_typ_cd"),
+            col("idw_patient_id").as("patient_id"),
+            col("plan_id")).distinct
+        /*
+  val tts_cv_Dx_clm_extrct_2017 = spark.read.table(s"PROD_US9_500167.tts_cv_Dx_clm_extrct_$year")
+  val tts_2017_DX_df = tts_cv_Dx_clm_extrct_2017
+    .select(
+      lit(s"$year").as("CLAIM_YR"),
+      lit("DX").as("data_typ_cd"),
+      col("idw_patient_id").as("patient_id"),
+      col("plan_id")).distinct
+
+  val tts_cv_Dx_clm_extrct_2018 = spark.read.table(s"PROD_US9_500167.tts_cv_Dx_clm_extrct_$year")
+  val tts_2018_DX_df = tts_cv_Dx_clm_extrct_2018
+    .select(
+      lit(s"$year").as("CLAIM_YR"),
+      lit("DX").as("data_typ_cd"),
+      col("idw_patient_id").as("patient_id"),
+      col("plan_id")).distinct
+*/
+
+        // +++++++++++++++Union of all DX and RX 3 years++++++++++++++++++++++++++++++++++++++
+
+ // val tts_cv_res_df = tts_2016_RX_df.union(tts_2017_RX_df).union(tts_2018_RX_df).union(tts_year_DX_df)
+    //  .union(tts_year_DX_df).union(tts_year_DX_df)
+
+        //tts_cv_res_df.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_PAT_PLN")
+
+        val CV_PAT_DF1 = spark.sql(s"""select distinct idw_patient_id  from $database.TTS_CV_MERGE_CDM_DX_RX_PAT_$year""")
+
+     /*   val CV_PAT_DF2 = spark.sql(s"""select distinct idw_patient_id  from $database.tts_cv_merge_cdm_dx_rx_pat_$year""")
+        val CV_PAT_DF3 = spark.sql(s"""select distinct idw_patient_id  from $database.tts_cv_merge_cdm_dx_rx_pat_$year""")
+
+        val cv_pat_all_df = CV_PAT_DF1.union(CV_PAT_DF2).union(CV_PAT_DF3) */
+
+        CV_PAT_DF1.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_PAT_LST")
+
+      }
+    }
+  }
+}
+
+=================================================
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions.{col, lit, row_number, substring}
+
+class GeneratingDatapull_Tables(spark: SparkSession, database:String, startMonthID:Int, endMonthID:Int, tableName:String) {
+def genrate_datapulltables() = {
+
+  //**************tts_cv_REF_DIAG_ALL*********************************
+
+ // spark.sql(s"""drop table if exists $database.REF_DIAG_ALL""")
+
+  val V_DIAGNOSIS = spark.read.table("PROD_DF2_US9.V_DIAGNOSIS")
+    .select(col("DIAG_VERS_TYP_ID"),
+      col("DIAG_CD"))
+
+  V_DIAGNOSIS.write.mode("overwrite").saveAsTable(s"$database.tts_cv_REF_DIAG_ALL")
+
+
+  //**************tts_cv_REF_PROC*********************************
+
+  //spark.sql(s"""drop table if exists ${database}.REF_PROC_ALL""")
+
+  val V_PROCEDURE = spark.read.table("PROD_DF2_US9.V_PROCEDURE")
+    .select(col("PRC_VERS_TYP_ID"),
+      col("PRC_CD"))
+  V_PROCEDURE.write.mode("overwrite").saveAsTable(s"$database.tts_cv_REF_PROC")
+
+
+  //**************tts_cv_V_TTS_CV_PT_LDL_NEW*********************************
+
+  //spark.sql(s"""drop table if exists ${database}.V_TTS_CV_PT_LDL_NEW""")
+
+  val TTS_CV_PT_LDL_NEW = spark.read.table(s"$database.TTS_CV_PT_LDL_NEW")
+    .select(col("idw_PATIENT_ID").as ("CDM_PATIENT_ID"))
+
+  TTS_CV_PT_LDL_NEW.write.mode("overwrite").saveAsTable(s"$database.tts_cv_V_TTS_CV_PT_LDL_NEW")
+
+   spark.sql(s"""select * from $database.REF_HEFH_MKT_DIAG""")
+
+ // drop table COH_IDX_CLAIM................
+
+
+  //**************COH_IDX_CLAIM*********************************
+
+  val TTS_CV_FACT_RX_PT_NEW_df = spark.read.table(s"$database.TTS_CV_FACT_RX_PT_NEW").filter(col("MONTH_ID").between(201401,201812))
+
+  val REF_HEFH_MKT_NDC_df = spark.read.table(s"$database.REF_HEFH_MKT_NDC")
+
+  val CV_MKT_JOIN_DF =TTS_CV_FACT_RX_PT_NEW_df.alias("a").join(REF_HEFH_MKT_NDC_df.alias("b"),col("a.IDW_PRODUCT_ID") === col("b.IDW_PRODUCT_ID"),"inner")
+    .select(
+      substring(col("MONTH_ID"),1,4).as ("COHORT_ID"),
+      col("IDW_PATIENT_ID"),col("date_OF_SERVICE"),
+      col("a.IDW_PRODUCT_ID"),
+      col("MONTH_ID"),
+      col("PATIENT_AGE"),
+      col("GENERIC_NAME"),
+      col("PRODUCT_LEVEL_1"),
+      col("PRODUCT_LEVEL_2"),
+      col("PRODUCT_LEVEL_3"),
+      col("PRODUCT_LEVEL_4"),
+      col("PRODUCT_LEVEL_5"),
+      row_number().over(Window.partitionBy(substring(col("MONTH_ID"),1,4), col("IDW_PATIENT_ID"))
+        .orderBy(col("date_OF_SERVICE").asc)).alias("RNK"))
+
+  val CV_MKT_JOIN = CV_MKT_JOIN_DF.filter(col("RNK") === lit(1))
+
+  CV_MKT_JOIN.write.mode("overwrite").saveAsTable(s"$database.COH_IDX_CLAIM")
+
+   spark.sql("""select * from prod_us9_500167.REF_HEFH_MKT_DIAG_PROB""")
+   spark.sql("""select * from prod_us9_500167.COH_IDX_CLAIM""")
+
+  //**************FACT_PT_DIAG*********************************
+
+  val FACT_DX_PT_NEW = spark.read.table("prod_us9_500167.tts_cv_FACT_DX_PT_NEW")
+  val df5 = FACT_DX_PT_NEW.select(col("IDW_PATIENT_ID"),
+    col("DIAG_VERS_TYP_ID"),
+    col("DIAG_CD"),
+    col("SERVICE_FROM_date")).distinct
+  df5.write.mode("overwrite").saveAsTable(s"$database.FACT_PT_DIAG")
+
+  //***********************HEFH_DIAG*********************************
+
+  val REF_HEFH_MKT_DIAG = spark.read.table("prod_us9_500167.REF_HEFH_MKT_DIAG")
+    .select(col("DIAG_CD"),
+      col("DIAG_VERS_TYP_ID"))
+
+  val REF_HEFH_MKT_DIAG_PROB = spark.read.table("prod_us9_500167.REF_HEFH_MKT_DIAG_PROB")
+    .select(col("DIAG_CD"),
+      col("DIAG_VERS_TYP_ID"))
+
+  val REF_HEFH_MKT_DIAG_PROB_uni = REF_HEFH_MKT_DIAG.union(REF_HEFH_MKT_DIAG_PROB)
+
+  REF_HEFH_MKT_DIAG_PROB_uni.write.mode("overwrite").saveAsTable(s"$database.HEFH_DIAG")
+
+
+  //***********************COH_IDX_PT_TYPE*********************************
+
+
+  val COH_IDX_PT_TYPE_res = spark.sql(
+    s"""select a.*, 1 as pt_type from $database.COH_IDX_CLAIM a
+                             where  exists
+                             (select 1 from $database.FACT_PT_DIAG  b where a.IDW_PATIENT_ID=b.IDW_PATIENT_ID and b.DIAG_CD='E7801' and b.SERVICE_FROM_date>=
+                             TO_DATE(from_unixtime(UNIX_TIMESTAMP('2016-10-01 00:00:00','yyyy-MM-dd')))
+                             )""")
+  COH_IDX_PT_TYPE_res.write.mode("overwrite").saveAsTable(s"$database.COH_IDX_PT_TYPE")
+
+
+  //***********************PT_TYPE_LB*********************************
+
+  val COHIDX_CLAIM_join = spark.sql(s"""select distinct a.*,
+                                    b.date_OF_SERVICE as lb_dos,
+                                    b.days_supply as lb_days_supply,
+                                    c.generic_name as lb_generic_name,
+                                    c.PRODUCT_LEVEL_1 as lb_prd_level_1,
+                                    c.PRODUCT_LEVEL_2 as lb_prd_level_2,
+                                    c.PRODUCT_LEVEL_3 as lb_prd_level_3,
+                                    c.PRODUCT_LEVEL_4 as lb_prd_level_4 ,
+                                    C.MARKET_DEF_NAME as lb_MARKET_DEF_NAME
+  from $database.COH_IDX_CLAIM a
+       inner join $database.TTS_CV_FACT_RX_PT_NEW b on a.idw_patient_id = b.idw_patient_id
+                                           and to_date(b.date_of_service) BETWEEN to_date(date_sub(a.date_OF_SERVICE,365*2)) and to_date(date_sub(a.date_OF_SERVICE,1))
+      INNER JOIN $database.REF_HEFH_MKT_NDC c on b.IDW_PRODUCT_ID=C.IDW_PRODUCT_ID
+       where a.PRODUCT_LEVEL_4 <> 'HIGH DOSE'""")
+
+  COHIDX_CLAIM_join.write.mode("overwrite").saveAsTable(s"$database.PT_TYPE_LB")
+
+
+  //***********************PT_TYPE_LB_SI1*********************************
+
+  val PT_TYPE_LB = spark.read.table(s"$database.PT_TYPE_LB")
+  val PT_TYPE_LB_join = spark.sql(s"""select a.* from $database.PT_TYPE_LB a
+                                 inner join (select cohort_id,idw_patient_id from  $database.PT_TYPE_LB
+                                 where lb_MARKET_DEF_NAME='STATINS' group by cohort_id,idw_patient_id
+                                 having count(distinct LB_PRD_LEVEL_2)>=1 ) b
+                               on a.idw_patient_id = b.idw_patient_id and a.cohort_id=b.cohort_id""")
+
+  val PT_TYPE_LB_c_join = spark.sql(s"""select c.* from $database.PT_TYPE_LB c
+                               inner join (select cohort_id,idw_patient_id from  $database.PT_TYPE_LB
+                               where lb_MARKET_DEF_NAME='STATINS' group by cohort_id,idw_patient_id
+                               having count(distinct LB_PRD_LEVEL_3)>=1 ) d
+                                 on c.idw_patient_id = d.idw_patient_id and c.cohort_id=d.cohort_id""")
+
+  val PT_TYPE_LB_UNI = PT_TYPE_LB_join.union(PT_TYPE_LB_c_join)
+
+  PT_TYPE_LB_UNI.write.mode("overwrite").saveAsTable(s"$database.PT_TYPE_LB_SI1")
+
+
+  //***********************tmp1_PT*********************************
+
+
+  val tts_cv_FACT_DX_PT_NEW = spark.read.table(s"$database.tts_cv_FACT_DX_PT_NEW")
+  val REF_SI_DIAG = spark.read.table(s"$database.REF_SI_DIAG")
+  val FACT_DX_PT_NEW_REF_SI_DIAG_JOIN = tts_cv_FACT_DX_PT_NEW.alias("a")
+    .join(REF_SI_DIAG.alias("b"),
+      col("A.DIAG_CD") === col("B.DIAG_CD") &&
+      col("A.DIAG_VERS_TYP_ID")=== col("B.DIAG_VERS_TYP_ID"),"inner")
+    .select("a.*")
+
+  FACT_DX_PT_NEW_REF_SI_DIAG_JOIN.write.mode("overwrite").saveAsTable(s"$database.tmp1_PT")
+
+  //***********************PT_TYPE_LB_SI2*********************************
+
+  val PT_TYPE_LB_SI1 = spark.read.table(s"$database.PT_TYPE_LB_SI1")
+  val tmp1_PT = spark.read.table(s"$database.tmp1_PT")
+  val PT_TYPE_LB_SI1_tmp1_PT_JOIN = spark.sql(s"""select distinct a.*, b.MONTH_ID as LB_SIDX_MTH,
+                              b.SERVICE_FROM_date as lb_sidx__dos
+                              from $database.PT_TYPE_LB_SI1 a inner join $database.tmp1_PT b
+                              on a.idw_patient_id = b.idw_patient_id
+                              and to_date(b.SERVICE_FROM_date) BETWEEN to_date(date_sub(a.date_OF_SERVICE,365*2))
+                              and to_date(a.date_OF_SERVICE)and to_date(b.SERVICE_FROM_date)
+                              between to_date(a.lb_dos) and date_add(to_date(a.lb_dos),(a.lb_days_supply-1))""")
+
+  PT_TYPE_LB_SI1_tmp1_PT_JOIN.write.mode("overwrite").saveAsTable(s"$database.PT_TYPE_LB_SI2")
+
+  //***********************PT_TYPE_LB_SI3*********************************
+
+  val PT_TYPE_LB_SI2 = spark.read.table(s"$database.PT_TYPE_LB_SI2")
+  val PT_TYPE_LB_SI2_df = spark.sql("""select a.*
+ from prod_us9_500167.PT_TYPE_LB_SI2 a
+ where  trim(a.lb_prd_level_3)>trim(a.PRODUCT_LEVEL_3) and a.PRODUCT_LEVEL_3<>'N/A' and a.lb_prd_level_3<>'N/A'""")
+
+  PT_TYPE_LB_SI2_df.write.mode("overwrite").saveAsTable(s"$database.PT_TYPE_LB_SI3")
+
+
+  //***********************COH_IDX_PT_TYPE*********************************
+
+  val COH_IDX_CLAIM_df = spark.read.table(s"$database.COH_IDX_CLAIM")
+  val PT_TYPE_LB_SI3 = spark.read.table(s"$database.PT_TYPE_LB_SI3")
+  val COH_IDX_PT_TYPE = spark.read.table(s"$database.COH_IDX_PT_TYPE").filter(col("pt_type")===lit(1))
+
+  val PT_TYPE_COH_IDX_join = PT_TYPE_LB_SI3.alias("b").join(COH_IDX_PT_TYPE.alias("c"),
+    col("b.cohort_id")===col("c.cohort_id") &&
+      col("b.idw_patient_id")===col("c.idw_patient_id"),"left_anti")
+
+  val  COH_IDX_CLAIM_final_join = COH_IDX_CLAIM_df.alias("a").join(PT_TYPE_COH_IDX_join.alias("d"),
+    col("a.COHORT_ID")===col("d.COHORT_ID") &&
+      col("a.idw_patient_id")===col("d.idw_patient_id"),"inner")
+    .select(col("a.*"),lit(2).as("pt_type")).distinct
+
+  COH_IDX_CLAIM_final_join.write.mode("overwrite").saveAsTable(s"$database.COH_IDX_PT_TYPE")
+
+
+  //***********************V_CV_DIAG*********************************
+
+  val REF_CHD_DIAG = spark.read.table(s"$database.REF_CHD_DIAG")
+    .select(col("DIAG_CD"),col("DIAG_VERS_TYP_ID"))
+  val  dfr = spark.sql(s"""select DIAG_CD,DIAG_VERS_TYP_ID from $database.REF_CHD_DIAG_EQIV where not (DIAGNOSIS_LEVEL_1='CORONARY HEART DISEASE-EQUIVALENCE' and
+                           DIAGNOSIS_LEVEL_2 in ('DIABETES MELLITUS','DIABETES WITH RENAL MANIFESTATIONS','DIABETIC RETINOPATHY','POLYNEUROPATHY IN DIABETES'))""")
+  val redf = REF_CHD_DIAG.union(dfr)
+  redf.write.mode("overwrite").saveAsTable(s"$database.V_CV_DIAG")
+
+
+  //***********************V_CV_PROC*********************************
+
+
+  val REF_CHD_PORC = spark.read.table(s"$database.REF_CHD_PORC")
+    .select(col("PRC_CD"),col("PRC_VERS_TYP_ID"))
+  val REF_CHD_PORC_1 = spark.read.table(s"$database.REF_CHD_PORC_1")
+    .select(col("PRC_CD"),col("PRC_VERS_TYP_ID"))
+  val REF_CHD_PORC_EQIV = spark.read.table(s"$database.REF_CHD_PORC_EQIV")
+    .select(col("PRC_CD"),col("PRC_VERS_TYP_ID"))
+
+  val res = REF_CHD_PORC.union(REF_CHD_PORC_1).union(REF_CHD_PORC_EQIV)
+  res.write.mode("overwrite").saveAsTable(s"$database.V_CV_PROC")
+
+  //***********************FACT_DX_CV*********************************
+
+  val FACT_DX_PT_NEW_DF1 = spark.sql(s"""select a.IDW_PATIENT_ID,SERVICE_FROM_date from  $database.tts_cv_FACT_DX_PT_NEW a inner join
+        $database.V_CV_DIAG b on A.DIAG_CD=b.DIAG_CD and a.DIAG_VERS_TYP_ID=b.DIAG_VERS_TYP_ID""")
+
+  val FACT_DX_PT_NEW_DF2 = spark.sql(s"""select a.IDW_PATIENT_ID,SERVICE_FROM_date from  $database.tts_cv_FACT_DX_PT_NEW a inner join
+        $database.V_CV_PROC b on A.PROCEDURE_CD=b.PRC_CD""")
+
+  val FACT_DX_PT_NEW_DF_RES = FACT_DX_PT_NEW_DF1.union(FACT_DX_PT_NEW_DF2)
+
+  FACT_DX_PT_NEW_DF_RES.write.mode("overwrite").saveAsTable(s"$database.FACT_DX_CV")
+
+  //***********************PT_TYPE_LB_CV*********************************
+
+  val PT_TYPE_LBDF = spark.sql(s"""select distinct a.*,
+                                     b.date_OF_SERVICE as lb_dos,
+                                     b.days_supply as lb_days_supply,
+                                     c.generic_name as lb_generic_name,
+                                     c.PRODUCT_LEVEL_1 as lb_prd_level_1,
+                                     c.PRODUCT_LEVEL_2 as lb_prd_level_2,
+                                     c.PRODUCT_LEVEL_3 as lb_prd_level_3, --dose
+                                     c.PRODUCT_LEVEL_4 as lb_prd_level_4, --high dose setting
+                                     d.SERVICE_FROM_date as lb_diag_dos
+                                       from $database.COH_IDX_CLAIM a
+                                            inner join $database.TTS_CV_FACT_RX_PT_NEW b on a.idw_patient_id = b.idw_patient_id
+                                                                                and to_date(b.date_OF_SERVICE) BETWEEN to_date(date_sub(a.date_OF_SERVICE,365*2)) and date_sub(to_date(a.date_OF_SERVICE),1)
+                                           INNER JOIN $database.REF_HEFH_MKT_NDC c on b.IDW_PRODUCT_ID=C.IDW_PRODUCT_ID
+                                            inner join $database.FACT_DX_CV d on a.idw_patient_id = d.idw_patient_id
+                                     and to_date(d.SERVICE_FROM_date) BETWEEN to_date(date_sub(a.date_OF_SERVICE,365*2)) and to_date(a.date_OF_SERVICE)""")
+
+
+  PT_TYPE_LBDF.write.mode("overwrite").saveAsTable(s"$database.PT_TYPE_LB_CV")
+
+
+  //***********************COH_IDX_PT_TYPE*********************************
+
+  val COH_IDX_CLAIM_df2 = spark.read.table(s"$database.COH_IDX_CLAIM")
+  val PT_TYPE_LB_CV = spark.read.table(s"$database.PT_TYPE_LB_CV")
+  val COH_IDX_PT_TYPE_df2 = spark.read.table(s"$database.COH_IDX_PT_TYPE")
+    .filter(col("pt_type").isin(List(1,2):_*))
+
+  val PT_TYPE_COH_IDX_join_df= PT_TYPE_LB_CV.alias("b").join(COH_IDX_PT_TYPE_df2.alias("c"),
+    col("b.cohort_id")===col("c.cohort_id") &&
+      col("b.idw_patient_id")===col("c.idw_patient_id"),"left_anti")
+
+  val COH_IDX_CLAIM_final_join_df = COH_IDX_CLAIM_df2.alias("a").join(PT_TYPE_COH_IDX_join_df.alias("d"),
+    col("a.COHORT_ID")===col("d.COHORT_ID") &&
+      col("a.idw_patient_id")===col("d.idw_patient_id"),"inner")
+    .select(col("a.*"),lit(3).as("pt_type")).distinct
+
+
+  COH_IDX_CLAIM_final_join_df.write.mode("overwrite").saveAsTable(s"$database.COH_IDX_PT_TYPE")
+
+
+  //***********************V_DIAB_DIAG*********************************
+
+  val REF_CHD_DIAG_EQIV = spark.read.table(s"$database.REF_CHD_DIAG_EQIV")
+    .filter(col("DIAGNOSIS_LEVEL_1")=== lit("CORONARY HEART DISEASE-EQUIVALENCE")&&
+      col("DIAGNOSIS_LEVEL_2").isin("DIABETES MELLITUS","DIABETES WITH RENAL MANIFESTATIONS","DIABETIC RETINOPATHY","POLYNEUROPATHY IN DIABETES"))
+  val REF_CHD_DIAG_EQIV_df = REF_CHD_DIAG_EQIV.select(col("DIAG_CD"),col("DIAG_VERS_TYP_ID"))
+
+  REF_CHD_DIAG_EQIV_df.write.mode("overwrite").saveAsTable(s"$database.V_DIAB_DIAG")
+
+
+  //***********************.FACT_DX_DIAB*********************************
+
+  val tts_cv_FACT_DX_PT_NEW_df = spark.read.table(s"$database.tts_cv_FACT_DX_PT_NEW")
+  val V_DIAB_DIAG = spark.read.table(s"$database.V_DIAB_DIAG")
+  val FACT_DX_PT_V_DIAB_join =tts_cv_FACT_DX_PT_NEW_df.alias("a")
+    .join(V_DIAB_DIAG.alias("b"),col("A.DIAG_CD")===col("b.DIAG_CD") &&
+      col("a.DIAG_VERS_TYP_ID")===col("b.DIAG_VERS_TYP_ID"))
+    .select(col("a.IDW_PATIENT_ID"),
+      col("SERVICE_FROM_date"))
+
+  FACT_DX_PT_V_DIAB_join.write.mode("overwrite").saveAsTable(s"$database.FACT_DX_DIAB")
+
+
+  //***********************FACT_RX_DIAB*********************************
+
+
+  val tts_cv_FACT_RX_PT_NEW = spark.read.table(s"$database.tts_cv_FACT_RX_PT_NEW")
+  val REF_DIABETES_MKT_NDC = spark.read.table(s"$database.REF_DIABETES_MKT_NDC")
+  val FACT_RX_PT_REF_join =tts_cv_FACT_RX_PT_NEW.alias("A")
+    .join(REF_DIABETES_MKT_NDC.alias("b"),col("A.IDW_PRODUCT_ID")===col("b.IDW_PRODUCT_ID"))
+    .select(col("a.IDW_PATIENT_ID"),
+      col("date_OF_SERVICE")).distinct
+
+  FACT_RX_PT_REF_join.write.mode("overwrite").saveAsTable(s"$database.FACT_RX_DIAB")
+
+
+  //***********************PT_TYPE_LB_DIAB*********************************
+
+
+  val COH_IDX_CLAIM = spark.read.table(s"$database.COH_IDX_CLAIM")
+  val TTS_CV_FACT_RX_PT_NEW = spark.read.table(s"$database.TTS_CV_FACT_RX_PT_NEW")
+  val REF_HEFH_MKT_NDC = spark.read.table(s"$database.REF_HEFH_MKT_NDC")
+  val result = spark.sql(s"""select distinct a.*,
+                          b.date_OF_SERVICE as lb_dos,
+                          b.days_supply as lb_days_supply,
+                          c.generic_name as lb_generic_name,
+                          c.PRODUCT_LEVEL_1 as lb_prd_level_1,
+                          c.PRODUCT_LEVEL_2 as lb_prd_level_2,
+                          c.PRODUCT_LEVEL_3 as lb_prd_level_3, --dose
+                          c.PRODUCT_LEVEL_4 as lb_prd_level_4, --high dose setting
+                          d.SERVICE_FROM_date as lb_diag_dos
+                          from prod_us9_500167.COH_IDX_CLAIM a
+inner join prod_us9_500167.TTS_CV_FACT_RX_PT_NEW b on a.idw_patient_id = b.idw_patient_id
+and to_date(b.date_OF_SERVICE) BETWEEN to_date(date_sub(a.date_OF_SERVICE,365*2)) and date_sub(to_date(a.date_OF_SERVICE),1)
+INNER JOIN prod_us9_500167.REF_HEFH_MKT_NDC c on b.IDW_PRODUCT_ID=C.IDW_PRODUCT_ID
+inner join prod_us9_500167.FACT_DX_DIAB d on a.idw_patient_id = d.idw_patient_id
+and to_date(d.SERVICE_FROM_date) BETWEEN to_date(date_sub(a.date_OF_SERVICE,365*2)) and to_date(a.date_OF_SERVICE)""")
+
+  result.write.mode("overwrite").saveAsTable(s"$database.PT_TYPE_LB_DIAB")
+
+
+
+  //***********************PT_TYPE_LB_DIAB1_NEW*********************************
+
+
+  val PT_TYPE_LB_DIAB = spark.read.table(s"$database.PT_TYPE_LB_DIAB").alias("a")
+  val FACT_RX_DIAB = spark.read.table(s"$database.FACT_RX_DIAB").alias("e")
+  val PT_TYPE_LB_DIAB_ACT_RX_DF = spark.sql(s"""select distinct a.* from  $database.PT_TYPE_LB_DIAB a
+                           inner join $database.FACT_RX_DIAB e  on a.idw_patient_id = e.idw_patient_id
+                           and to_date(e.date_OF_SERVICE) BETWEEN to_date(date_sub(a.date_OF_SERVICE,365*2))
+                            and date_sub(to_date(a.date_OF_SERVICE),1)
+                           and to_date(lb_diag_dos) < to_date(e.date_OF_SERVICE)""")
+
+  PT_TYPE_LB_DIAB_ACT_RX_DF.write.mode("overwrite").saveAsTable(s"$database.PT_TYPE_LB_DIAB1_NEW")
+
+  //***********************COH_IDX_PT_TYPE*********************************
+  val COH_IDX_CLAIM_df3=spark.table(s"$database.COH_IDX_CLAIM")
+  val PT_TYPE_LB_DIAB1_NEW=spark.table(s"$database.PT_TYPE_LB_DIAB1_NEW")
+  val COH_IDX_PT_TYPE_df=spark.table(s"$database.COH_IDX_PT_TYPE")
+    .filter(col("pt_type").isin(List(1,2,3):_*) )
+
+  val PT_TYPE_COH_IDX_join_df5=PT_TYPE_LB_DIAB1_NEW.alias("b").join(COH_IDX_PT_TYPE_df.alias("c"),
+    col("b.cohort_id")===col("c.cohort_id") &&
+      col("b.idw_patient_id")===col("c.idw_patient_id"),"left_anti")
+
+  val COH_IDX_CLAIM_final_df4=COH_IDX_CLAIM_df3.alias("a")
+    .join(PT_TYPE_COH_IDX_join_df5.as("i"),col("a.COHORT_ID")===col("i.COHORT_ID") &&
+      col("a.idw_patient_id")===col("i.idw_patient_id"),"inner")
+    .select(col("a.*"),lit(4).as("pt_type")).distinct
+
+  //COH_IDX_CLAIM_final_df.count= 4815147
+
+  COH_IDX_CLAIM_final_df4.write.mode("overwrite").saveAsTable(s"$database.COH_IDX_PT_TYPE")
+
+
+
+
+  val FACT_PT_DIAG = spark.read.table(s"$database.FACT_PT_DIAG").alias("b")
+  val FACT_PT_DIAG_df = spark.sql(s"""select IDW_PATIENT_ID ,DIAG_CD,SERVICE_FROM_date
+                          from $database.FACT_PT_DIAG  b where  b.DIAG_CD='E7801' and
+        b.SERVICE_FROM_date>=TO_DATE(from_unixtime(UNIX_TIMESTAMP('2016-10-01 00:00:00','yyyy-MM-dd')))""")
+
+  FACT_PT_DIAG_df.write.mode("overwrite").saveAsTable(s"$database.HEFH_DIAG_PAT")
+
+
+
+
+
+
+
+
+
+}
+
+}
+============================================
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+
+class GeneratingDX_CLM_EXTRACT(spark: SparkSession, database: String, startYear: Int, endYear: Int, tableName: String)
+{
+def generatedx_clm_extrct_year_data = {
+
+  val years = (startYear to endYear).toList
+
+
+
+  years.foreach {
+    year => {
+      val TTS_CV_DX_TMP1 = spark.read.table(s"$database.TTS_CV_DX_${year}_TMP1")
+
+     // spark.sql(s"""DROP TABLE IF EXISTS $database.tts_cv_dx_clm_extrct_$year""")
+
+      val V_DX_TRANS_SS = spark.read.table("PROD_DF2_US9.V_DX_TRANS_ss").alias("A")
+        .filter(round(col("A.MONTH_ID") / 100, 0) === lit(year) &&
+          col("A.SVC_FR_DT").cast("Integer") >= col("B.MIN_SSD").cast("Integer") &&
+          col("A.CLAIM_TYP_CD") === lit("P"))
+
+
+      val V_DX_TRANS_SS_DX_TMP1_join = V_DX_TRANS_SS.join(TTS_CV_DX_TMP1.alias("B"),
+        col("A.CLAIM_ID") === col("B.CLAIM_ID"), "inner")
+        .select(
+          col("A.CLAIM_ID"),
+          col("A.SVC_NBR").as("SERVICE_NBR"),
+          col("A.DIAG_CD_POSN_NBR").as("DX_CODE_POSITION"),
+          col("A.APRV_AMT").as("APPROVED_AMT"),
+          col("A.DIAG_CD"),
+          col("A.PATIENT_ID").as("IDW_PATIENT_ID"),
+          col("B.ORIG_PLAN_ID"),
+          col("B.PLAN_ID"),
+          lit(-999).as("IDW_PAYER_ID"),
+          col("B.ORIG_RENDERING_PROV_ID"),
+          col("B.PROVIDER_RENDERING_ID").as("IDW_RENDERING_PROVIDER_ID"),
+          col("A.MONTH_ID"),
+          col("A.PAT_brth_YR_NBR").as("PATIENT_AGE"),
+          col("A.PAT_ZIP3_CD").as("PATIENT_ZIP3"),
+          col("A.PLACE_OF_SVC_CD").as("PLACE_OF_SERVICE_CD"),
+          col("A.PRC_CD").as("PROCEDURE_CD"),
+          col("A.SVC_CRGD_AMT").as("SERVICE_CHARGE_AMT"),
+          col("A.SVC_FR_DT").as("SERVICE_FROM_DATE"),
+          col("A.SVC_TO_DT").as("SERVICE_TO_DATE"),
+          col("A.TOS_ID").as("TYPE_OF_SVCS_ID"),
+          col("A.UNIT_OF_SVC_AMT").as("UNITS_OF_SERVICE"),
+          col("A.VST_ID").as("VISIT_KEY"),
+          col("A.CLAIM_MONTH_ID"),
+          col("B.TOT_CLAIM_CHG"),
+          col("B.TOT_CLAIM_BAL"),
+          col("B.TOT_PURCH_SVC_LAB_CHARGES"),
+          col("B.MARKET_ID"),
+          col("B.MIN_SSD"),
+          col("B.MIN_DOS"),
+          lit("P").as("CLAIM_TYP_CD"))
+
+      V_DX_TRANS_SS_DX_TMP1_join.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_DX_CLM_EXTRACT_$year")
+
+
+    }
+  }
+
+}
+}
+==================================================
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+class GeneratingDX_DIM_Data(spark: SparkSession, database: String, startYear: Int, endYear: Int, tableName: String) {
+
+  def GenerateDIMDATAtable = {
+
+    val years = (startYear to endYear).toList
+
+    years.foreach {
+      year => {
+        //spark.sql(s"""DROP TABLE IF EXISTS $database.tts_cv_DX_DIM_DATA_$year""")
+
+        val TTS_CV_T_DX_DIM_DATA_DF1 = spark.read.table(s"$database.TTS_CV_T_DX_DIM_DATA_$year")
+        val TTS_CV_T_INDEX_FILE_DX_DF2 = spark.read.table(s"$database.TTS_CV_T_INDEX_FILE_DX_$year")
+        val TTS_CV_DX_CLM_SUPPL_DF3= spark.read.table(s"$database.TTS_CV_DX_CLM_SUPPL_$year")
+
+        val join_dfs = TTS_CV_T_DX_DIM_DATA_DF1.alias("A").join(TTS_CV_T_INDEX_FILE_DX_DF2.alias("B")
+          , col("A.IDW_PATIENT_ID") === col("B.IDW_PATIENT_ID"), "inner")
+          .select(
+            col("A.CLAIM_ID"),
+            col("A.SERVICE_NBR"),
+            col("A.DX_CODE_POSITION"),
+            col("A.APPROVED_AMT"),
+            col("A.ORIG_PLAN_ID"),
+            col("A.INF_PLAN_ID").as("INF_PLAN_ID_STP1"),
+            col("A.DIAG_CD"),
+            col("A.IDW_PATIENT_ID"),
+            col("A.IDW_PAYER_ID"),
+            col("A.IDW_RENDERING_PROVIDER_ID"),
+            col("A.MONTH_ID"),
+            col("A.PATIENT_AGE"),
+            col("A.PATIENT_ZIP3"),
+            col("A.PLACE_OF_SERVICE_CD"),
+            col("A.PROCEDURE_CD"),
+            col("A.SERVICE_CHARGE_AMT"),
+            col("A.SERVICE_FROM_DATE"),
+            col("A.SERVICE_TO_DATE"),
+            col("A.TYPE_OF_SVCS_ID"),
+            col("A.UNITS_OF_SERVICE"),
+            col("A.VISIT_KEY"),
+            col("A.CLAIM_MONTH_ID"),
+            col("A.TOT_CLAIM_CHG"),
+            col("A.TOT_CLAIM_BAL"),
+            col("A.TOT_PURCH_SVC_LAB_CHARGES"),
+            col("A.MARKET_ID"),
+            col("A.MIN_SSD"),
+            col("A.MIN_DOS"),
+            col("A.CLAIM_TYP_CD"),
+            col("A.PAT_MOD"),
+            col("A.TTS_GENDER"),
+            col("A.TTS_AGE_ID"),
+            col("A.TTS_AGE_DESC"),
+            col("A.TTS_CATEGORY_DESC"),
+            col("A.TTS_COMPLICATION_FLAG"),
+            col("A.TTS_COMORBIDITY_FLAG"),
+            col("A.TTS_PLACE_OF_SERVICE"),
+            col("A.TTS_SPECIALTY_DESC"),
+            col("A.TTS_SPECIALTY_ID"),
+            col("A.TTS_PAY_TYPE_ID"),
+            col("A.TTS_PAY_TYPE_DESC"),
+            col("B.PROV_ZIPCODE"),
+            col("B.TTS_REGION"),
+            col("B.TTS_STATE"),
+            col("B.TTS_CBSA_CD"),
+            col("B.TTS_COUNTY"),
+            col("A.TTS_MD_PROC_FLAG"),
+            col("A.TTS_SERVICE_DESCRIPTION"),
+            col("A.TTS_PT_TYPE")).distinct
+
+
+
+        join_dfs.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_DX_DIM_DATA_$year")
+
+
+      }
+
+    }
+
+  }
+}
+=========================================================
+
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+
+class GeneratingDX_PAT_PLN(spark: SparkSession, database: String, startYear: Int, endYear: Int, tableName: String) {
+  def DX_PAT_PLN_Tables = {
+
+    val years = (startYear to endYear).toList
+
+    years.foreach {
+      year => {
+
+        val DX_PAT_DF1 = spark.sql(
+          s"""SELECT DISTINCT ROUND(MONTH_ID/100) claim_yr, 'DX' data_typ_cd ,IDW_PATIENT_ID patient_id , IDW_PAYER_ID plan_id
+                                          FROM $database.TTS_CV_DX_DIM_DATA_$year""")
+        /*
+   val dx_pat_df2 = spark.sql(s"""SELECT DISTINCT ROUND(MONTH_ID/100) claim_yr, 'DX' data_typ_cd ,IDW_PATIENT_ID patient_id , IDW_PAYER_ID plan_id
+                                          FROM $database.tts_cv_DX_DIM_DATA_$year""")
+
+   val dx_pat_df3 = spark.sql(s"""SELECT DISTINCT ROUND(MONTH_ID/100) claim_yr, 'DX' data_typ_cd ,IDW_PATIENT_ID patient_id , IDW_PAYER_ID plan_id
+                                          FROM $database.tts_cv_DX_DIM_DATA_$year""")
+
+
+      */
+
+
+        // val result_df = dx_pat_df1.union(dx_pat_df2).union(dx_pat_df3)
+
+
+        DX_PAT_DF1.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_DX_PAT_PLN")
+
+      }
+
+    }
+  }
+}
+=======================================================
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+
+class GeneratingDX_RPT_TABLES(spark: SparkSession, database:String, startYear: Int, endYear: Int, tableName: String) {
+  def generate_CV_DX_RPT_TABLES = {
+
+    val years = (startYear to endYear).toList
+
+    years.foreach {
+      year => {
+
+        val TTS_CV_RX_DIM_DATA_DF = spark.read.table(s"$database.TTS_CV_RX_DIM_DATA_$year")
+        val TTS_CV_DIM_DOI = spark.read.table(s"$database.TTS_CV_DIM_DOI")
+        val JOIN_DFS = TTS_CV_RX_DIM_DATA_DF.alias("a").join(TTS_CV_DIM_DOI.alias("b"),
+          col("a.idw_product_id") === col("b.idw_product_id"), "inner")
+          .select(col("IDW_PATIENT_ID"), col("b.STATIN_DESC")).groupBy("IDW_PATIENT_ID")
+
+        val Result_DF = JOIN_DFS.agg(countDistinct("b.STATIN_DESC")).as("STATIN_COUNT")
+
+        Result_DF.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_RX_STATIN_PATIENT_$year")
+
+
+        /** ****************tts_cv_RX_DOSE_year Table ******************************/
+
+
+        val FirstDF = spark.sql(
+          s"""with q1 as(select distinct IDW_PRODUCT_ID,PRODUCT_LEVEL_5 as RX_PRODUCT_DOSE from $database.tts_cv_DIM_DOI  union
+                               select distinct IDW_PRODUCT_ID,PRODUCT_LEVEL_4 from $database.TTS_CV_DIM_DOI where PRODUCT_LEVEL_4 ='COMBINATION/OTHER' )
+                              select distinct a.IDW_PATIENT_ID,
+                              CAST(b.RX_PRODUCT_DOSE as VARCHAR(25)) as RX_PRODUCT_DOSE from $database.TTS_CV_RX_DIM_DATA_$year a
+                              inner join q1  b
+                              on a.idw_product_id=b.idw_product_id
+                              inner join $database.TTS_CV_DX_DX_COM_COMORB_$year c on a.idw_patient_id=c.idw_patient_id""")
+
+
+        FirstDF.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_RX_DOSE_$year")
+
+
+        /** **************************tts_cv_RX_DOSE_year_1 ***********************************/
+
+
+        val TTS_CV_RX_DIM_DATA_DF1 = spark.read.table(s"$database.TTS_CV_RX_DIM_DATA_$year")
+        val TTS_CV_DIM_DOI_DF2 = spark.read.table(s"$database.TTS_CV_DIM_DOI")
+        val df_join = TTS_CV_RX_DIM_DATA_DF1.alias("a").join(TTS_CV_DIM_DOI_DF2.alias("b"), col("a.idw_product_id") === col("b.idw_product_id"))
+          .select(
+            col("a.MONTH_ID"),
+            col("a.IDW_patient_id"),
+            col("a.CLAIM_ID"),
+            col("a.DATE_OF_SERVICE"),
+            col("a.DAYS_SUPPLY"),
+            col("a.IDW_PRODUCT_ID"))
+        val result_df = df_join.filter(col("a.month_id") >= lit(201501) && col("B.MARKET_DEF_NAME") === lit("PCSK9 INHIBITORS"))
+
+
+        result_df.write.mode("overwrite").saveAsTable(s"$database.RX_DOSE_1_$year")
+
+
+        /** **************************tts_cv_RX_DOSE_year_2 *************************/
+
+
+        val df_first = spark.sql(
+          s"""select distinct a.MONTH_ID,a.IDW_patient_id,a.CLAIM_ID,a.DATE_OF_SERVICE,a.DAYS_SUPPLY,a.IDW_PRODUCT_ID,B.PRODUCT_LEVEL_4,
+                                    c.DATE_OF_SERVICE as PCSK9_DOS,c.DAYS_SUPPLY as PCSK9_DAYS_SUPPLY
+                                    from $database.TTS_CV_RX_DIM_DATA_$year  a inner join $database.tts_cv_DIM_DOI  b
+                                    on a.idw_product_id=b.idw_product_id inner join $database.tts_cv_RX_DOSE_1_$year c on  A.IDW_PATIENT_ID=c.idw_patient_id and
+                                    B.MARKET_DEF_NAME='STATINS' and c.DATE_OF_SERVICE between a.DATE_OF_SERVICE and DATE_ADD(a.DATE_OF_SERVICE , a.DAYS_SUPPLY)
+                                    where a.month_id>=201501""")
+
+
+        val df_second = spark.sql(
+          s"""select distinct a.MONTH_ID,a.IDW_patient_id,a.CLAIM_ID,a.DATE_OF_SERVICE,a.DAYS_SUPPLY,a.IDW_PRODUCT_ID,B.PRODUCT_LEVEL_4,
+                                     c.DATE_OF_SERVICE as PCSK9_DOS,c.DAYS_SUPPLY as PCSK9_DAYS_SUPPLY
+                                     from $database.TTS_CV_RX_DIM_DATA_$year  a inner join $database.tts_cv_DIM_DOI b
+                                     on a.idw_product_id=b.idw_product_id inner join $database.tts_cv_RX_DOSE_1_$year c on  A.IDW_PATIENT_ID=c.idw_patient_id and
+                                     B.MARKET_DEF_NAME='STATINS' and a.DATE_OF_SERVICE between c.DATE_OF_SERVICE and DATE_ADD(c.DATE_OF_SERVICE,c.DAYS_SUPPLY)
+                                     where a.month_id>=201501""")
+
+
+        val result2_df = df_first.union(df_second)
+
+        result2_df.write.mode("append").saveAsTable(s"$database.TTS_CV_RX_DOSE_2_$year")
+
+
+        /** **************************tts_cv_RX_DOSE_year_3 *************************/
+
+
+        val df1 = spark.sql(
+          s"""select a.*, greatest(a.DATE_OF_SERVICE,a.PCSK9_DOS) as OVERLAP_ST,
+                                least(DATE_ADD(a.DATE_OF_SERVICE,a.DAYS_SUPPLY-1),DATE_ADD(a.PCSK9_DOS,a.PCSK9_DAYS_SUPPLY-1)) as OVERLAP_END,
+                                DATEDIFF(least(DATE_ADD(a.DATE_OF_SERVICE,a.DAYS_SUPPLY-1),DATE_ADD(a.PCSK9_DOS,a.PCSK9_DAYS_SUPPLY-1)),
+                                greatest(a.DATE_OF_SERVICE,a.PCSK9_DOS)) as OVERLAP_DAYS
+                                from $database.tts_cv_RX_DOSE_2_$year a order by idw_patient_id,date_of_service""")
+
+        df1.write.mode("append").saveAsTable(s"$database.TTS_CV_RX_DOSE_3_$year")
+
+
+        /** ******************************INSERT INTO tts_cv_RX_DOSE_year ***************/
+
+        /*val tts_cv_RX_DOSE_2017_3_df = spark.read.table("PROD_US9_500167.tts_cv_RX_DOSE_2017_3")
+      .filter(col("OVERLAP_DAYS")>= lit(15))
+
+    val finaldf = tts_cv_RX_DOSE_2017_3_df.select(col("idw_patient_id"),
+      col("PCSK9INHIBITORS+STATIN").as("RX_PRODUCT_DOSE")).distinct()
+
+    finaldf.write.mode("append").saveAsTable("PROD_US9_500167.tts_cv_RX_DOSE_2017")*/
+
+        val sdf = spark.sql(
+          s"""select distinct idw_patient_id,'PCSK9 INHIBITORS + STATIN' as RX_PRODUCT_DOSE
+                           from $database.TTS_CV_RX_DOSE_3_$year where OVERLAP_DAYS>=15""")
+
+        sdf.write.mode("append").saveAsTable(s"$database.TTS_CV_RX_DOSE_$year")
+
+
+        /** *********************************tts_cv_LX_TOT_CHOL_RESULT_Year****************************/
+
+
+        val TTS_CV_LX_TOT_CHOL_RESULT_DF = spark.sql(
+          s"""select distinct a.idw_patient_id,a.result_val as HDL,
+                                                b.result_val as LDL, c.result_val as TRIGY,round(a.result_val+b.result_val+.2*c.result_val) as TOT_CHOL,
+                                                d.TOT_CHOL_RESULT_ID,d.TOT_CHOL_RESULT
+                                                from $database.tts_cv_LX_HDL_RESULT_$year a
+                                                inner join $database.tts_cv_LX_LDL_RESULT_$year b on a.IDW_PATIENT_ID=B.IDW_PATIENT_ID
+                                                inner join $database.tts_cv_LX_TRIGY_RESULT_$year c on a.IDW_PATIENT_ID=c.IDW_PATIENT_ID
+                                                inner join $database.tts_cv_DIM_TOT_CHOL_RESULT d on round(a.result_val+b.result_val+.2*c.result_val) between d.TOT_CHOL_LOWER and d.TOT_CHOL_UPPER""")
+
+
+        TTS_CV_LX_TOT_CHOL_RESULT_DF.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_LX_TOT_CHOL_RESULT_$year")
+
+
+        /** *********************************tts_cv_LX_TOT_CHOL_RESULT_year ****************************/
+
+        spark.sql(s"""DROP VIEW IF EXISTS $database.TTS_CV_PT_DIAG_SPECIALTY_$year""")
+        spark.sql(
+          s"""CREATE VIEW IF NOT EXISTS $database.TTS_CV_PT_DIAG_SPECIALTY_$year AS
+                 with q1 as
+                 (select a.*,  NVL(b.TTS_SPECIALTY_DESC,'OTHER')  as DIAG_SPECIALTY_DESC,
+                 row_number() over (partition by PAT_MOD,IDW_PATIENT_ID,MARKET_ID order by MIN_SSD) as RNK
+                 from $database.TTS_CV_DX_PAT_DIAG_$year a inner join  $database.TTS_CV_PROVIDER_SPECIALTY_XREF b on a.IDW_RENDERING_PROVIDER_ID=b.idw_provider_ID)
+                 select * from q1 where rnk=1)""")
+
+
+        /** *********************************tts_cv_DX_DX_COMPLIC_COMORB_year_1 ****************************/
+
+
+        val DX_COMPLIC_COMORB_year_1_df = spark.sql(
+          s"""SELECT DISTINCT
+            A.MARKET_ID,
+            $year AS YR,
+            A.CLAIM_ID,
+            -- A.SERVICE_NBR ,
+            A.VISIT_KEY,
+            A.IDW_PATIENT_ID,
+            A.IDW_PAYER_ID,
+            --MAX(A.PATIENT_AGE) OVER(PARTITION BY A.IDW_PATIENT_ID) as PATIENT_AGE,
+            --A.IDW_PAYER_ID,
+            A.TTS_AGE_DESC,
+            A.TTS_GENDER,
+            --MAX(A.TTS_AGE_DESC) OVER(PARTITION BY A.IDW_PATIENT_ID) as DX_AGE_GROUP,
+            -- MAX(A.TTS_GENDER) OVER(PARTITION BY A.IDW_PATIENT_ID) as DX_GENDER,
+            --A.DX_COMPLICATION_CNT,
+            NVL(A.DX_COMORBIDITY_CNT,0) as DX_COMORBIDITY_CNT,
+            pay.TTS_PAY_TYPE_DESC,
+            NVL(PROV.TTS_SPECIALTY_DESC,'OTHER') as  TTS_SPECIALTY_DESC,
+            NVL(B.PLACE_OF_SERVICE,'Other') AS TTS_PLACE_OF_SERVICE,
+            A.TTS_REGION,
+            A.TTS_STATE,
+            A.TTS_CBSA_CD,
+            A.TTS_COUNTY,
+            A.TOT_CLAIM_CHG,
+            cast (null as INT) DX_PROC_FLAG ,
+            --MAX(DECODE(A.IDW_RENDERING_PROVIDER_ID, NULL, 0, 1)) OVER(PARTITION BY A.IDW_PATIENT_ID) DX_PROC_FLAG ,
+            -- MIN(A.SERVICE_FROM_DATE) SERVICE_FROM_DATE,
+            A.TTS_SERVICE_DESCRIPTION,
+            A.TTS_PT_TYPE ,
+            A.TTS_COMORBIDITY ,
+            pay.ACCOUNT_ID
+            FROM $database.TTS_CV_DX_DX_COM_COMORB_$year A
+            LEFT OUTER  JOIN $database.tts_cv_DIM_MX_PLACE_OF_SERVICE B
+            ON A.PLACE_OF_SERVICE_CD = B.PLACE_OF_SERVICE_CD
+            LEFT OUTER JOIN  $database.tts_cv_PROVIDER_SPECIALTY_XREF prov on A.IDW_RENDERING_PROVIDER_ID=prov.idw_provider_ID
+            LEFT OUTER JOIN $database.tts_cv_PAYER_XREF  pay on a.idw_payer_id=pay.idw_payer_id  and  pay.lvl=1
+            WHERE A.MIN_SSD<=to_date('2017-01-01')""")
+
+        DX_COMPLIC_COMORB_year_1_df.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_DX_DX_COMPLIC_COMORB_1_$year")
+
+        /*
+
+    val TTS_CV_DX_DX_COM_COMORB_2017_df = spark.read.table("PROD_US9_500167.TTS_CV_DX_DX_COM_COMORB_2017").alias("A").filter(col("A.MIN_SSD") <= to_date(lit("2017-01-01")))
+    val tts_cv_DIM_MX_PLACE_OF_SERVICE_df = spark.read.table("PROD_US9_500167.tts_cv_DIM_MX_PLACE_OF_SERVICE")
+    val tts_cv_PROVIDER_SPECIALTY_XREF_df = spark.read.table("PROD_US9_500167.tts_cv_PROVIDER_SPECIALTY_XREF")
+    val tts_cv_PAYER_XREF_df2 = spark.read.table("PROD_US9_500167.tts_cv_PAYER_XREF")
+
+    val final_df = TTS_CV_DX_DX_COM_COMORB_2017_df.alias("A").join(tts_cv_DIM_MX_PLACE_OF_SERVICE_df.alias("B"),
+      col("A.PLACE_OF_SERVICE_CD")=== col("B.PLACE_OF_SERVICE_CD"),"left_outer")
+      .join(tts_cv_PROVIDER_SPECIALTY_XREF_df.alias("prov"),col("A.IDW_RENDERING_PROVIDER_ID")===col("prov.idw_provider_ID"),"left_outer")
+      .join(tts_cv_PAYER_XREF_df2.alias("pay"),col("a.idw_payer_id")===col("pay.idw_payer_id") && col("pay.lvl")===lit(1),"left_outer")
+      .select(
+        col("A.MARKET_ID"),
+        lit("2017").as("YR"),
+        col("A.CLAIM_ID"),
+        col("A.VISIT_KEY"),
+        col("A.IDW_PATIENT_ID"),
+        col("A.IDW_PAYER_ID"),
+        col("A.TTS_AGE_DESC"),
+        col("A.TTS_GENDER"),
+        coalesce(col("PROV.TTS_SPECIALTY_DESC"), lit("OTHER")).alias("TTS_SPECIALTY_DESC"),
+        coalesce(col("A.DX_COMORBIDITY_CNT"), lit(0)).alias("DX_COMORBIDITY_CNT"),
+        coalesce(col("B.PLACE_OF_SERVICE"), lit("OTHER")).alias("TTS_PLACE_OF_SERVICE"),
+        col("pay.TTS_PAY_TYPE_DESC"),
+        col("A.TTS_REGION"),
+        col("A.TTS_STATE"),
+        col("A.TTS_CBSA_CD"),
+        col("A.TTS_COUNTY"),
+        col("A.TOT_CLAIM_CHG"),
+        col("A.TTS_SERVICE_DESCRIPTION"),
+        col("A.TTS_PT_TYPE"),
+        col("A.TTS_COMORBIDITY"),
+        lit(null).cast("Int").alias("DX_PROC_FLAG"),
+        col("pay.ACCOUNT_ID")).distinct()
+
+
+    final_df.write.mode("overwrite").saveAsTable("PROD_US9_500167.tts_cv_DX_DX_COMPLIC_COMORB_2017_1")
+
+
+*/
+
+        /** *********************************INSERT INTO tts_cv_DX_DX_COMPLIC_COMORB_year_1 ****************************/
+
+        /*val INSERT_DX_COMPLIC_COMORB_2017_1_df = spark.sql("""select A.MARKET_ID,
+                                                        A.YR,
+                                                        A.CLAIM_ID,
+                                                        A.VISIT_KEY,
+                                                        A.IDW_PATIENT_ID,
+                                                        A.IDW_PAYER_ID,
+                                                        A.TTS_AGE_DESC,
+                                                        A.TTS_GENDER,
+                                                        A.DX_COMORBIDITY_CNT,
+                                                        pay.TTS_PAY_TYPE_DESC,
+                                                        A.TTS_SPECIALTY_DESC,
+                                                        A.TTS_PLACE_OF_SERVICE,
+                                                        A.TTS_REGION,
+                                                        A.TTS_STATE,
+                                                        A.TTS_CBSA_CD,
+                                                        A.TTS_COUNTY,
+                                                        A.TOT_CLAIM_CHG,
+                                                        A.DX_PROC_FLAG ,
+                                                        A.TTS_SERVICE_DESCRIPTION,
+                                                        A.TTS_PT_TYPE ,
+                                                        A.TTS_COMORBIDITY ,
+                                                        pay.ACCOUNT_ID  FROM
+                                                        PROD_US9_500167.tts_cv_DX_DX_COMPLIC_COMORB_2017_1  A
+                                                        INNER JOIN PROD_US9_500167.tts_cv_PAYER_XREF  pay on
+                                                        a.idw_payer_id=pay.idw_payer_id  and  pay.lvl=2""")*/
+
+        val TTS_CV_DX_DX_COMPLIC_COMORB_1_DF = spark.read.table(s"$database.TTS_CV_DX_DX_COMPLIC_COMORB_1_$year")
+        val TTS_CV_PAYER_XREF_DF = spark.read.table(s"$database.TTS_CV_PAYER_XREF")
+
+        val Join_DFS = TTS_CV_DX_DX_COMPLIC_COMORB_1_DF.alias("A").join(TTS_CV_PAYER_XREF_DF.alias("pay"),
+          col("a.idw_payer_id") === col("pay.idw_payer_id") && col("pay.lvl") === lit(2), "inner")
+          .select(
+            col("A.MARKET_ID"),
+            col("A.YR"),
+            col("A.CLAIM_ID"),
+            col("A.VISIT_KEY"),
+            col("A.IDW_PATIENT_ID"),
+            col("A.IDW_PAYER_ID"),
+            col("A.TTS_AGE_DESC"),
+            col("A.TTS_GENDER"),
+            col("A.DX_COMORBIDITY_CNT"),
+            col("pay.TTS_PAY_TYPE_DESC"),
+            col("A.TTS_PLACE_OF_SERVICE"),
+            col("A.TTS_REGION"),
+            col("A.TTS_STATE"),
+            col("A.TTS_CBSA_CD"),
+            col("A.TTS_COUNTY"),
+            col("A.TOT_CLAIM_CHG"),
+            col("A.DX_PROC_FLAG"),
+            col("A.TTS_SERVICE_DESCRIPTION"),
+            col("A.TTS_PT_TYPE"),
+            col("A.TTS_COMORBIDITY"),
+            col("pay.ACCOUNT_ID"),
+            col("A.TTS_SPECIALTY_DESC"))
+
+
+        Join_DFS.write.mode("append").saveAsTable(s"$database.TTS_CV_DX_DX_COMPLIC_COMORB_1_$year")
+
+
+        /** *********************************tts_cv_tmp1_year *******************************************************/
+
+
+        val TTS_CV_TMP1_DF = spark.sql(
+          s"""select idw_patient_id, MAX(A.TTS_AGE_DESC) as DX_AGE_GROUP,
+                                        MAX(A.TTS_GENDER) as DX_GENDER
+                                        from $database.tts_cv_DX_DX_COMPLIC_COMORB_1_$year A
+                                        group by idw_patient_id""")
+
+
+        TTS_CV_TMP1_DF.write.mode("append").saveAsTable(s"$database.TTS_CV_TMP1_$year")
+
+
+        /** *********************************tts_cv_DX_RPT_DATA_year ************************************/
+
+        val DX_RPT_DATA_DF = spark.sql(
+          s"""SELECT
+                                distinct A.MARKET_ID,
+                                A.YR,
+                                A.CLAIM_ID,
+                                -- A.SERVICE_NBR ,
+                                A.VISIT_KEY,
+                                A.IDW_PATIENT_ID,
+                                A.IDW_PAYER_ID,
+                                K.DX_AGE_GROUP,
+                                K.DX_GENDER,
+                                A.DX_COMORBIDITY_CNT,
+                                A.TTS_PAY_TYPE_DESC,
+                                A.TTS_SPECIALTY_DESC,
+                                A.TTS_PLACE_OF_SERVICE,
+                                A.TTS_REGION,
+                                A.TTS_STATE,
+                                A.TTS_CBSA_CD,
+                                -- case when A.TTS_COUNTY is not null then A.TTS_STATE||'-'||A.TTS_COUNTY end TTS_COUNTY,
+                                case when A.TTS_COUNTY is not null then concat(A.TTS_STATE,'-',A.TTS_COUNTY) end TTS_COUNTY,
+                                A.TOT_CLAIM_CHG,
+                                A.DX_PROC_FLAG ,
+                                A.TTS_SERVICE_DESCRIPTION,
+                                A.TTS_PT_TYPE ,
+                                A.TTS_COMORBIDITY ,
+                                C.LDL_RESULT ,
+                                D.HDL_RESULT ,
+                                E.TRIGY_RESULT,
+                                A.ACCOUNT_ID,
+                                NVL(STA.STATIN_COUNT ,0) as STATIN_COUNT,
+                                NVL(g.DIAG_SPECIALTY_DESC,'OTHER') as  DIAG_SPECIALTY_DESC,
+                                h.TOT_CHOL_RESULT ,
+                                NVL(ds.RX_PRODUCT_DOSE, 'UNKNOWN' ) as  RX_PRODUCT_DOSE,
+                                h.LDL
+                                FROM PROD_US9_500167.tts_cv_DX_DX_COMPLIC_COMORB_2017_1 A
+                                INNER JOIN $database.tts_cv_tmp1_$year K ON A.IDW_PATIENT_ID=K.IDW_PATIENT_ID
+                                LEFT OUTER JOIN $database.tts_cv_LX_LDL_RESULT_$year C
+                                ON A.IDW_PATIENT_ID = C.IDW_PATIENT_ID
+                                LEFT OUTER JOIN $database.tts_cv_LX_HDL_RESULT_$year D
+                                ON A.IDW_PATIENT_ID = D.IDW_PATIENT_ID
+                                LEFT OUTER JOIN $database.tts_cv_LX_TRIGY_RESULT_$year E
+                                ON A.IDW_PATIENT_ID = E.IDW_PATIENT_ID
+                                LEFT OUTER JOIN $database.tts_cv_RX_STATIN_PATIENT_$year STA on  A.IDW_PATIENT_ID = STA.IDW_PATIENT_ID
+                                LEFT OUTER JOIN $database.tts_cv_PT_DIAG_SPECIALTY_$year g on  A.IDW_PATIENT_ID = g.IDW_PATIENT_ID
+                                LEFT OUTER JOIN $database.tts_cv_LX_TOT_CHOL_RESULT_$year h on  A.IDW_PATIENT_ID = h.IDW_PATIENT_ID
+                                LEFT OUTER JOIN $database.tts_cv_RX_DOSE_$year  ds on a.IDW_PATIENT_ID=ds.IDW_PATIENT_ID""")
+
+
+        DX_RPT_DATA_DF.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_DX_RPT_DATA_$year")
+
+/*
+        /** *********************************RX_STATIN_PATIENT_2018 *************************************************/
+
+
+       /* val RX_STATIN_PATIENT_2018_df = spark.sql(
+          """select IDW_PATIENT_ID, COUNT( DISTINCT b.STATIN_DESC) as STATIN_COUNT
+                                                         from PROD_US9_500167.TTS_CV_RX_DIM_DATA_2018 a
+                                                         inner join  PROD_US9_500167.tts_cv_DIM_DOI b on a.idw_product_id=b.idw_product_id
+                                                         group by IDW_PATIENT_ID""")
+
+
+        RX_STATIN_PATIENT_2018_df.write.mode("append").saveAsTable(s"$database.tts_cv_RX_STATIN_PATIENT_2018") */
+
+
+        /** *********************************tts_cv_RX_DOSE_2018 *************************************************/
+
+
+        val RX_DOSE_2018_df = spark.sql(
+          """with q1 as (
+                      select distinct IDW_PRODUCT_ID,PRODUCT_LEVEL_5 as RX_PRODUCT_DOSE from PROD_US9_500167.tts_cv_DIM_DOI  union
+                      select distinct IDW_PRODUCT_ID,PRODUCT_LEVEL_4 from PROD_US9_500167.tts_cv_DIM_DOI where PRODUCT_LEVEL_4 ='COMBINATION/OTHER' )
+                      select distinct a.IDW_PATIENT_ID,
+                      cast(b.RX_PRODUCT_DOSE as VARCHAR(25)) as RX_PRODUCT_DOSE from PROD_US9_500167.tts_cv_RX_DIM_DATA_2018 a
+                      inner join q1  b
+                      on a.idw_product_id=b.idw_product_id
+                      inner join PROD_US9_500167.TTS_CV_DX_DX_COM_COMORB_2018 c on a.idw_patient_id=c.idw_patient_id""")
+
+
+        RX_DOSE_2018_df.write.mode("append").saveAsTable(s"$database.tts_cv_RX_DOSE_2018")
+
+
+        /** **********************************tts_cv_RX_DOSE_2018_1 *************************************************/
+
+
+        val RX_DOSE_2018_1_df = spark.sql(
+          """select a.MONTH_ID,a.IDW_patient_id,a.CLAIM_ID,a.DATE_OF_SERVICE,a.DAYS_SUPPLY,a.IDW_PRODUCT_ID
+                                           from PROD_US9_500167.tts_cv_RX_DIM_DATA_2018  a inner join PROD_US9_500167.tts_cv_DIM_DOI b
+                                           on a.idw_product_id=b.idw_product_id where a.month_id>=201501 and B.MARKET_DEF_NAME='PCSK9 INHIBITORS'""")
+
+
+        RX_DOSE_2018_1_df.write.mode("overwrite").saveAsTable(s"$database.RX_DOSE_2018_1")
+
+
+        /** *********************************tts_cv_RX_DOSE_2018_2 ****************************************************/
+
+        //spark.sql("""SELECT COUNT(1) FROM PROD_US9_500167.tts_cv_RX_DOSE_2018_2""")
+
+        val RX_DOSE_2018_df1 = spark.sql(
+          """select distinct a.MONTH_ID,a.IDW_patient_id,a.CLAIM_ID,a.DATE_OF_SERVICE,a.DAYS_SUPPLY,a.IDW_PRODUCT_ID,B.PRODUCT_LEVEL_4,
+                  c.DATE_OF_SERVICE as PCSK9_DOS,c.DAYS_SUPPLY as PCSK9_DAYS_SUPPLY
+                  from PROD_US9_500167.tts_cv_RX_DIM_DATA_2018  a inner join PROD_US9_500167.tts_cv_DIM_DOI  b
+                  on a.idw_product_id=b.idw_product_id inner join PROD_US9_500167.tts_cv_RX_DOSE_2018_1 c on  A.IDW_PATIENT_ID=c.idw_patient_id and
+                  B.MARKET_DEF_NAME='STATINS' and c.DATE_OF_SERVICE between a.DATE_OF_SERVICE and DATE_ADD(a.DATE_OF_SERVICE , a.DAYS_SUPPLY)
+                  where a.month_id>=201501""")
+
+        val RX_DOSE_2018_df2 = spark.sql(
+          """select distinct a.MONTH_ID,a.IDW_patient_id,a.CLAIM_ID,a.DATE_OF_SERVICE,a.DAYS_SUPPLY,a.IDW_PRODUCT_ID,B.PRODUCT_LEVEL_4,
+                                  c.DATE_OF_SERVICE as PCSK9_DOS,c.DAYS_SUPPLY as PCSK9_DAYS_SUPPLY
+                                  from PROD_US9_500167.tts_cv_RX_DIM_DATA_2018  a inner join PROD_US9_500167.tts_cv_DIM_DOI b
+                                  on a.idw_product_id=b.idw_product_id inner join PROD_US9_500167.tts_cv_RX_DOSE_2018_1 c on  A.IDW_PATIENT_ID=c.idw_patient_id and
+                                  B.MARKET_DEF_NAME='STATINS' and a.DATE_OF_SERVICE between c.DATE_OF_SERVICE and DATE_ADD(c.DATE_OF_SERVICE,c.DAYS_SUPPLY)
+                                  where a.month_id>=201501""")
+
+
+        val RX_DOSE_2018_res = RX_DOSE_2018_df1.union(RX_DOSE_2018_df2)
+
+
+        RX_DOSE_2018_res.write.mode("append").saveAsTable(s"$database.tts_cv_RX_DOSE_2018_2")
+
+
+        /** **************************************tts_cv_RX_DOSE_2018_3 *********************************************/
+
+
+        val tts_cv_RX_DOSE_2018_3_df = spark.sql(
+          """select a.*, greatest(a.DATE_OF_SERVICE,a.PCSK9_DOS) as OVERLAP_ST,
+                                              least(DATE_ADD(a.DATE_OF_SERVICE,a.DAYS_SUPPLY-1),DATE_ADD(a.PCSK9_DOS,a.PCSK9_DAYS_SUPPLY-1)) as OVERLAP_END,
+                                              DATEDIFF(least(DATE_ADD(a.DATE_OF_SERVICE,a.DAYS_SUPPLY-1),DATE_ADD(a.PCSK9_DOS,a.PCSK9_DAYS_SUPPLY-1)),
+                                              greatest(a.DATE_OF_SERVICE,a.PCSK9_DOS)) as OVERLAP_DAYS
+                                              from PROD_US9_500167.tts_cv_RX_DOSE_2018_2 a order by idw_patient_id,date_of_service""")
+
+
+        tts_cv_RX_DOSE_2018_3_df.write.mode("append").saveAsTable(s"$database.tts_cv_RX_DOSE_2018_3")
+
+
+        /** **************************************tts_cv_PT_DIAG_SPECIALTY_2018 *********************************************/
+
+        val data1 = spark.sql(
+          """with q1 as
+                           (select a.*,  NVL(b.TTS_SPECIALTY_DESC,'OTHER')  as DIAG_SPECIALTY_DESC,
+                           row_number() over (partition by PAT_MOD,
+                           IDW_PATIENT_ID,MARKET_ID order by MIN_SSD) as RNK
+                           from PROD_US9_500167.tts_cv_DX_PAT_DIAG_2018 a inner join PROD_US9_500167.tts_cv_PROVIDER_SPECIALTY_XREF b on A.IDW_RENDERING_PROVIDER_ID=b.idw_provider_ID)
+                           select * from q1 where rnk=1""")
+
+        data1.write.mode("overwrite").saveAsTable(s"$database.tts_cv_PT_DIAG_SPECIALTY_2018")
+
+
+        /** **************************************tts_cv_DX_DX_COMPLIC_COMORB_2018_1 *********************************************/
+
+
+        val data2 = spark.sql(
+          """SELECT DISTINCT
+                            A.MARKET_ID,
+                            2018 AS YR,
+                            A.CLAIM_ID,
+                            -- A.SERVICE_NBR ,
+                            A.VISIT_KEY,
+                            A.IDW_PATIENT_ID,
+                            A.IDW_PAYER_ID,
+                            --MAX(A.PATIENT_AGE) OVER(PARTITION BY A.IDW_PATIENT_ID) as PATIENT_AGE,
+                            --A.IDW_PAYER_ID,
+                            A.TTS_AGE_DESC,
+                            A.TTS_GENDER,
+                            --MAX(A.TTS_AGE_DESC) OVER(PARTITION BY A.IDW_PATIENT_ID) as DX_AGE_GROUP,
+                            -- MAX(A.TTS_GENDER) OVER(PARTITION BY A.IDW_PATIENT_ID) as DX_GENDER,
+                            --A.DX_COMPLICATION_CNT,
+                            NVL(A.DX_COMORBIDITY_CNT,0) as DX_COMORBIDITY_CNT,
+                            pay.TTS_PAY_TYPE_DESC,
+                            NVL(PROV.TTS_SPECIALTY_DESC,'OTHER') as  TTS_SPECIALTY_DESC,
+                            NVL(B.PLACE_OF_SERVICE,'Other') AS TTS_PLACE_OF_SERVICE,
+                            A.TTS_REGION,
+                            A.TTS_STATE,
+                            A.TTS_CBSA_CD,
+                            A.TTS_COUNTY,
+                            A.TOT_CLAIM_CHG,
+                            cast (null as INT) DX_PROC_FLAG ,
+                            --MAX(DECODE(A.IDW_RENDERING_PROVIDER_ID, NULL, 0, 1)) OVER(PARTITION BY A.IDW_PATIENT_ID) DX_PROC_FLAG ,
+                            -- MIN(A.SERVICE_FROM_DATE) SERVICE_FROM_DATE,
+                            A.TTS_SERVICE_DESCRIPTION,
+                            A.TTS_PT_TYPE ,
+                            A.TTS_COMORBIDITY ,
+                            pay.ACCOUNT_ID
+                            FROM PROD_US9_500167.TTS_CV_DX_DX_COM_COMORB_2018 A
+                            LEFT OUTER  JOIN PROD_US9_500167.tts_cv_DIM_MX_PLACE_OF_SERVICE B
+                            ON A.PLACE_OF_SERVICE_CD = B.PLACE_OF_SERVICE_CD
+                            LEFT OUTER JOIN  PROD_US9_500167.tts_cv_PROVIDER_SPECIALTY_XREF prov on A.IDW_RENDERING_PROVIDER_ID=prov.idw_provider_ID
+                            LEFT OUTER JOIN PROD_US9_500167.tts_cv_PAYER_XREF  pay on a.idw_payer_id=pay.idw_payer_id  and  pay.lvl=1
+                            WHERE A.MIN_SSD<=to_date('2018-01-01')""")
+
+        data2.write.mode("overwrite").saveAsTable(s"$database.tts_cv_DX_DX_COMPLIC_COMORB_2018_1")
+
+
+
+        /*
+
+        val TTS_CV_DX_DX_COM_COMORB_2018_df = spark.read.table("PROD_US9_500167.TTS_CV_DX_DX_COM_COMORB_2018").alias("A").filter(col("A.MIN_SSD") <= to_date(lit("2018-01-01")))
+        val tts_cv_DIM_MX_PLACE_OF_SERVICE_df = spark.read.table("PROD_US9_500167.tts_cv_DIM_MX_PLACE_OF_SERVICE")
+        val tts_cv_PROVIDER_SPECIALTY_XREF_df = spark.read.table("PROD_US9_500167.tts_cv_PROVIDER_SPECIALTY_XREF")
+        val tts_cv_PAYER_XREF_df2 = spark.read.table("PROD_US9_500167.tts_cv_PAYER_XREF")
+
+        val final_df = TTS_CV_DX_DX_COM_COMORB_2018_df.alias("A").join(tts_cv_DIM_MX_PLACE_OF_SERVICE_df.alias("B"),
+          col("A.PLACE_OF_SERVICE_CD")=== col("B.PLACE_OF_SERVICE_CD"),"left_outer")
+          .join(tts_cv_PROVIDER_SPECIALTY_XREF_df.alias("prov"),col("A.IDW_RENDERING_PROVIDER_ID")===col("prov.idw_provider_ID"),"left_outer")
+          .join(tts_cv_PAYER_XREF_df2.alias("pay"),col("a.idw_payer_id")===col("pay.idw_payer_id") && col("pay.lvl")===lit(1),"left_outer")
+          .select(
+            col("A.MARKET_ID"),
+            lit("2018").as("YR"),
+            col("A.CLAIM_ID"),
+            col("A.VISIT_KEY"),
+            col("A.IDW_PATIENT_ID"),
+            col("A.IDW_PAYER_ID"),
+            col("A.TTS_AGE_DESC"),
+            col("A.TTS_GENDER"),
+            coalesce(col("PROV.TTS_SPECIALTY_DESC"), lit("OTHER")).alias("TTS_SPECIALTY_DESC"),
+            coalesce(col("A.DX_COMORBIDITY_CNT"), lit(0)).alias("DX_COMORBIDITY_CNT"),
+            coalesce(col("B.PLACE_OF_SERVICE"), lit("OTHER")).alias("TTS_PLACE_OF_SERVICE"),
+            col("pay.TTS_PAY_TYPE_DESC"),
+            col("A.TTS_REGION"),
+            col("A.TTS_STATE"),
+            col("A.TTS_CBSA_CD"),
+            col("A.TTS_COUNTY"),
+            col("A.TOT_CLAIM_CHG"),
+            col("A.TTS_SERVICE_DESCRIPTION"),
+            col("A.TTS_PT_TYPE"),
+            col("A.TTS_COMORBIDITY"),
+            lit(null).cast("Int").alias("DX_PROC_FLAG"),
+            col("pay.ACCOUNT_ID")).distinct()
+
+
+        final_df.write.mode("overwrite").saveAsTable("$database.tts_cv_DX_DX_COMPLIC_COMORB_2018_1")
+
+
+    */
+
+
+        /** *********************************Itts_cv_DX_DX_COMPLIC_COMORB_2018_1 ****************************/
+
+        val tts_cv_DX_DX_COMPLIC_COMORB_2018_1_df5 = spark.read.table("PROD_US9_500167.tts_cv_DX_DX_COMPLIC_COMORB_2018_1")
+        val tts_cv_PAYER_XREF_df3 = spark.read.table("PROD_US9_500167.tts_cv_PAYER_XREF")
+
+        val join_all_df = tts_cv_DX_DX_COMPLIC_COMORB_2018_1_df5.alias("A").join(tts_cv_PAYER_XREF_df3.alias("pay"),
+          col("a.idw_payer_id") === col("pay.idw_payer_id") && col("pay.lvl") === lit(2), "inner")
+          .select(
+            col("A.MARKET_ID"),
+            col("A.YR"),
+            col("A.CLAIM_ID"),
+            col("A.VISIT_KEY"),
+            col("A.IDW_PATIENT_ID"),
+            col("A.IDW_PAYER_ID"),
+            col("A.TTS_AGE_DESC"),
+            col("A.TTS_GENDER"),
+            col("A.DX_COMORBIDITY_CNT"),
+            col("pay.TTS_PAY_TYPE_DESC"),
+            col("A.TTS_PLACE_OF_SERVICE"),
+            col("A.TTS_REGION"),
+            col("A.TTS_STATE"),
+            col("A.TTS_CBSA_CD"),
+            col("A.TTS_COUNTY"),
+            col("A.TOT_CLAIM_CHG"),
+            col("A.DX_PROC_FLAG"),
+            col("A.TTS_SERVICE_DESCRIPTION"),
+            col("A.TTS_PT_TYPE"),
+            col("A.TTS_COMORBIDITY"),
+            col("pay.ACCOUNT_ID"),
+            col("A.TTS_SPECIALTY_DESC"))
+
+
+        join_all_df.write.mode("append").saveAsTable(s"$database.tts_cv_DX_DX_COMPLIC_COMORB_2018_1")
+
+        /*
+val sdf = spark.sql(""" select A.MARKET_ID,
+                           A.YR,
+                           A.CLAIM_ID,
+                           A.VISIT_KEY,
+                           A.IDW_PATIENT_ID,
+                           A.IDW_PAYER_ID,
+                           A.TTS_AGE_DESC,
+                           A.TTS_GENDER,
+                           A.DX_COMORBIDITY_CNT,
+                           pay.TTS_PAY_TYPE_DESC,
+                           A.TTS_SPECIALTY_DESC,
+                           A.TTS_PLACE_OF_SERVICE,
+                           A.TTS_REGION,
+                           A.TTS_STATE,
+                           A.TTS_CBSA_CD,
+                           A.TTS_COUNTY,
+                           A.TOT_CLAIM_CHG,
+                           A.DX_PROC_FLAG ,
+                           A.TTS_SERVICE_DESCRIPTION,
+                           A.TTS_PT_TYPE ,
+                           A.TTS_COMORBIDITY ,
+                           pay.ACCOUNT_ID  FROM
+                           PROD_US9_500167.tts_cv_DX_DX_COMPLIC_COMORB_2018_1  A
+                           INNER JOIN PROD_US9_500167.tts_cv_PAYER_XREF  pay on a.idw_payer_id=pay.idw_payer_id  and  pay.lvl=2""")*/
+
+        /** *********************************tts_cv_tmp1_2018 ****************************/
+
+        val tts_cv_tmp1_2018_dfr = spark.sql(
+          """select idw_patient_id, MAX(A.TTS_AGE_DESC)  as DX_AGE_GROUP,
+                                                    MAX(A.TTS_GENDER) as DX_GENDER
+                                                    from PROD_US9_500167.tts_cv_DX_DX_COMPLIC_COMORB_2018_1 A
+                                                    group by idw_patient_id""")
+
+
+        tts_cv_tmp1_2018_dfr.write.mode("overwrite").saveAsTable(s"$database.tts_cv_tmp1_2018")
+
+*/
+      }
+
+    }
+  }
+}
+
+============================================
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+class GeneratingDX_TMP1(spark: SparkSession, database: String, startYear: Int, endYear: Int, tableName: String) {
+
+  def generate_dx_tmp1_table = {
+
+    val years = (startYear to endYear).toList
+    val V_PDM_PLAN = spark.read.table(s"$database.V_PDM_PLAN")
+    val V_PDM_PROVIDER = spark.read.table(s"$database.V_PDM_PROVIDER")
+
+    years.foreach {
+      year => {
+
+        val V_DX_CLAIM = spark.read.table("PROD_DF2_US9.V_DX_CLAIM").alias("A").filter(round(col("A.MONTH_ID") / 100, 0) === lit(year)
+          && col("A.CLAIM_TYP_CD") === lit("P"))
+
+        val TTS_CV_MERGE_CDM_DX_RX_PAT_DF = spark.read.table(s"$database.TTS_CV_MERGE_CDM_DX_RX_PAT_$year")
+
+
+        val V_DX_CLAIM_JOIN_DF = V_DX_CLAIM.alias("A").join(TTS_CV_MERGE_CDM_DX_RX_PAT_DF.alias("B")
+          , col("A.PATIENT_ID") === col("B.IDW_PATIENT_ID"), "inner")
+          .join(V_PDM_PLAN.alias("C"), col("A.PLAN_ID") === col("C.FR_PLAN_ID"), "left_outer")
+          .join(V_PDM_PROVIDER.alias("D"), col("A.PROVIDER_RENDERING_ID") === col("D.FR_PROVIDER_ID"), "left_outer")
+
+
+        V_DX_CLAIM_JOIN_DF.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_DX__${year}_TMP1")
+
+
+      }
+    }
+
+
+
+  }
+
+}
+==================================================
+
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions.{col, lit, round, substring}
+
+class GeneratingPAT_ALL(spark: SparkSession, database:String, startYear:Int, endYear:Int, tableName:String) {
+  def generatePAT_ALLtable() = {
+    println("+++++++++++++++++++++++creating Tables+++++++++++++++++++++++")
+
+    //*****************TTS_CV_PATIENT_ALL*********************************
+
+    /*
+    val v_pat_provider_prod_chnl_mth = spark.read.table("prod_df2_us9.v_pat_provider_prod_chnl_mth")
+      .filter(col("DATA_TYP_CD")=== lit("RX") && col("MONTH_ID")
+        .between(201401,201812))
+    val TTS_CV_REF_HeFH_Mkt_NDC = spark.read.table("prod_us9_500167.TTS_CV_REF_HeFH_Mkt_NDC")
+    val v_pat_excl = spark.read.table("prod_df2_us9.v_pat_excl")
+
+    val result_join1 = v_pat_provider_prod_chnl_mth.alias("A").join(TTS_CV_REF_HeFH_Mkt_NDC.alias("B"),
+      col("A.PRODUCT_ID")===col("B.IDW_PRODUCT_ID"),"inner")
+    val result_join2 = result_join1.alias("a").join(v_pat_excl.alias("c"),
+      col("c.PATIENT_ID")===col("a.PATIENT_ID"),"left_anti")
+      .select(substring(col("MONTH_ID"),1,4).as("COHORT_ID"),
+        col("A.PATIENT_ID"),lit("R").as("DATA_TYPE"))*/
+
+    //result_join2.count=936683098
+
+    val years = (startYear to endYear).toList
+
+    years.foreach {
+      year => {
+
+        val result_join2 = spark.sql(
+          s"""SELECT substr(CAST(MONTH_ID AS STRING),1,4) as COHORT_ID,
+                     A.PATIENT_ID,
+                     'R' as DATA_TYPE
+                     FROM   prod_df2_us9.v_pat_provider_prod_chnl_mth a
+                     INNER JOIN $database.TTS_CV_REF_HeFH_Mkt_NDC b
+                     ON     A.PRODUCT_ID=B.IDW_PRODUCT_ID
+                     WHERE  A.DATA_TYP_CD ='RX'
+                     AND    A.MONTH_ID BETWEEN $year AND $year
+                     AND NOT EXISTS
+                     (SELECT 1 FROM prod_df2_us9.v_pat_excl C
+                      WHERE C.PATIENT_ID=A.PATIENT_ID)""")
+
+        result_join2.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_PATIENT_ALL")
+
+
+
+        //*************************TTS_CV_COH_PATIENT_ALL****************************
+
+        val TTS_CV_PATIENT_ALL = spark.read.table(s"$database.TTS_CV_PATIENT_ALL").
+          select(
+            col("COHORT_ID"),
+            col("PATIENT_ID").as("IDW_PATIENT_ID")).distinct
+
+        TTS_CV_PATIENT_ALL.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_COH_PATIENT_ALL")
+
+
+        //*************************TTS_CV_PT_LDL_NEW**********************************
+
+        val TTS_CV_COH_PATIENT_ALL = spark.read.table(s"$database.TTS_CV_COH_PATIENT_ALL")
+          .select(col("IDW_PATIENT_ID")).distinct
+
+        TTS_CV_COH_PATIENT_ALL.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_PT_LDL_NEW")
+
+
+
+
+        //*************************tts_cv_FACT_DX_PT_NEW**********************************
+
+        val V_DX_TRANS_SS = spark.read.table("prod_df2_us9.v_dx_trans_SS").alias("A").filter(col("A.MONTH_ID").between(201401, 201412)
+          && col("A.PATIENT_ID") > lit(0))
+
+        val TTS_CV_PT_LDL_NEW = spark.read.table(s"$database.TTS_CV_PT_LDL_NEW").alias("B")
+
+        val  V_DX_TRANS_SS_PT_LDL_NEW_df = V_DX_TRANS_SS.join(TTS_CV_PT_LDL_NEW,
+          col("A.PATIENT_ID") === col("B.IDW_PATIENT_ID"), "inner")
+          .select(
+            col("A.PATIENT_ID").as("IDW_PATIENT_ID"),
+            col("A.SVC_FR_DT").as("SERVICE_FROM_DATE"),
+            col("A.DIAG_CD"),
+            col("A.PRC_CD").as("PROCEDURE_CD"),
+            col("A.DIAG_VERS_TYP_ID"),
+            col("A.MONTH_ID"))
+
+        V_DX_TRANS_SS_PT_LDL_NEW_df.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_FACT_DX_PT_NEW")
+
+        //*************************tts_cv_FACT_RX_PT_NEW**********************************
+
+        val V_RX_TRANS_SS = spark.read.table("prod_df2_us9.V_RX_TRANS_SS").alias("A")
+          .filter(round(col("A.MONTH_ID") / 100, 0) === lit(year) &&
+            col("A.CHNL_CD").isin("R", "M") &&
+          col("A.PATIENT_ID") > lit(0))
+        val TTS_CV_PT_LDL_NEW_df = spark.read.table(s"$database.TTS_CV_PT_LDL_NEW")
+
+        val resdf1 = V_RX_TRANS_SS.alias("A").join(TTS_CV_PT_LDL_NEW_df.alias("B"),
+          col("A.PATIENT_ID") === col("B.IDW_PATIENT_ID"), "inner")
+          .select(
+            col("A.PATIENT_ID").as("IDW_PATIENT_ID"),
+            col("A.SVC_DT").as("DATE_OF_SERVICE"),
+            col("A.PRODUCT_ID").as("IDW_PRODUCT_ID"),
+            col("A.MONTH_ID"),
+            col("A.DAYS_SUPPLY_CNT").as("DAYS_SUPPLY"),
+            col("A.pat_brth_yr_nbr").as("PATIENT_AGE"),
+            col("A.CHNL_CD"))
+
+        resdf1.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_FACT_RX_PT_NEW")
+
+
+        // compute stats prod_us9_500167.TTS_CV_prod_us9_500167.TTS_CV_FACT_RX_PT_NEW
+        // compute stats prod_us9_500167.tts_cv_FACT_DX_PT_NEW;
+        //select * from prod_us9_500167.tts_cv_REF_HeFH_Mkt_NDC
+
+
+      }
+
+
+    }
+  }
+}
+========================================================
+
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+class GeneratingPAT_PREF_EXTR(spark: SparkSession, database: String, startYear: Int, endYear: Int, tableName: String)
+{
+def generate_pat_pref_extr_data ={
+  val v_us9_pref_final_extrt = spark.read.table("PROD_DF2_US9_DPT.V_US9_PREF_FINAL_EXTRT")
+    .filter(col("PROC_MTH")=== lit(201812))
+  val tts_cv_pat_lst = spark.read.table(s"$database.TTS_CV_PAT_LST")
+
+  val v_us9_pref_final_pat_lst_join = v_us9_pref_final_extrt.alias("a")
+    .join(tts_cv_pat_lst.alias("b"),col("a.pat_id")===col("b.idw_patient_id"))
+    .select(
+      col("pat_id"),
+      col("pat_gender_cd"),
+      col("pat_zip_3"),
+      col("most_rcnt_dx_payer_pln_id_ccy"),
+      col("most_rcnt_dx_payer_pln_id_pcy"),
+      col("most_rcnt_dx_payer_pln_id_p2cy"),
+      col("most_freq_dx_payer_pln_id_ccy"),
+      col("most_freq_dx_payer_pln_id_pcy"),
+      col("most_freq_dx_payer_pln_id_p2cy"),
+      col("most_rcnt_rx_payer_pln_id_ccy"),
+      col("most_rcnt_rx_payer_pln_id_pcy"),
+      col("most_rcnt_rx_payer_pln_id_p2cy"),
+      col("most_freq_rx_payer_pln_id_ccy"),
+      col("most_freq_rx_payer_pln_id_pcy"),
+      col("most_freq_rx_payer_pln_id_p2cy"))
+
+
+
+  v_us9_pref_final_pat_lst_join.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_PAT_PREF_EXTR")
+
+
+
+
+}
+}
+===============================================
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+class GeneratingPAT_RX_PREF_EXTR(spark: SparkSession, database: String, startYear: Int, endYear:Int, tableName:String) {
+  def TTS_CV_PAT_PREF_EXTR_tableRX = {
+
+    val V_US9_PREF_FINAL_EXTRT_DF = spark.read.table("PROD_DF2_US9_DPT.V_US9_PREF_FINAL_EXTRT").filter(col("proc_mth")=== lit("201809"))
+    val TTS_CV_DX_PAT_PLN_DF = spark.read.table(s"$database.TTS_CV_DX_PAT_PLN")
+
+    val join_dfrs = V_US9_PREF_FINAL_EXTRT_DF.alias("A").join(TTS_CV_DX_PAT_PLN_DF.alias("B"),col("A.PAT_ID")===col("B.IDW_PATIENT_ID"),"inner")
+      .select(
+        col("pat_id"),
+        col("pat_gender_cd"),
+        col("pat_zip_3"),
+        col("MOST_RCNT_RX_PAYER_PLN_ID_CCY"),
+        col("MOST_FREQ_RX_PAYER_PLN_ID_CCY"),
+        col("MOST_RCNT_RX_PAYER_PLN_ID_PCY"),
+        col("MOST_FREQ_RX_PAYER_PLN_ID_PCY"),
+        col("MOST_RCNT_RX_PAYER_PLN_ID_P2CY"),
+        col("MOST_FREQ_RX_PAYER_PLN_ID_P2CY"),
+        col("MOST_RCNT_DX_PAYER_PLN_ID_CCY"),
+        col("MOST_FREQ_DX_PAYER_PLN_ID_CCY"),
+        col("MOST_RCNT_DX_PAYER_PLN_ID_PCY"),
+        col("MOST_FREQ_DX_PAYER_PLN_ID_PCY"),
+        col("MOST_RCNT_DX_PAYER_PLN_ID_P2CY"),
+        col("MOST_FREQ_DX_PAYER_PLN_ID_P2CY"))
+
+    join_dfrs.write.mode("overwrite").saveAsTable(s"$database.tts_cv_pat_rx_pref_extr")
+
+
+  }
+
+}
+=================================================
+
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+class GeneratingRX_CLM_Extrct(spark: SparkSession, database: String, startYear: Int, endYear: Int, tableName: String) {
+  def generatetts_cv_Rx_clm_extrct_yearwisedata = {
+
+    val years = (startYear to endYear).toList
+
+    val V_RX_TRANS_ACTN_DF = spark.read.table("PROD_DF2_US9.V_RX_TRANS_ACTN")
+    val V_PHARMACY_DF = spark.read.table("PROD_DF2_US9.V_PHARMACY")
+
+    years.foreach {
+      year => {
+
+        val join_data_frames = spark.sql(
+          s"""SELECT RX.*, CASE WHEN nvl(RX.STG_OPC_AMT, -9999) > nvl(RX.RETAIL_DOL_AMT,-9999) THEN RX.RETAIL_DOL_AMT
+                                              ELSE RX.STG_OPC_AMT
+                                              END AS PATIENT_OPC
+                                              FROM
+                                              (
+                                              SELECT
+                                              A.CHNL_CD,
+                                              A.CLAIM_ID,
+                                              A.SVC_DT AS DATE_OF_SERVICE,
+                                              A.DAYS_SUPPLY_CNT AS DAYS_SUPPLY,
+                                              A.FILL_NBR,
+                                              A.PAT_BRTH_YR_NBR AS PATIENT_AGE,
+                                              A.PAT_GENDER_CD AS PATIENT_GENDER,
+                                              A.PATIENT_ID AS IDW_PATIENT_ID,
+                                              A.PHARMACY_ID AS IDW_PHARMACY_ID,
+                                              A.PRODUCT_ID AS IDW_PRODUCT_ID,
+                                              A.PLAN_ID ORIG_PLAN_ID,
+                                              nvl(E.PLAN_ID,A.PLAN_ID) PLAN_ID,
+                                              -999  AS IDW_PAYER_ID,  --to have inf_plan_id
+                                              A.PROVIDER_ID ORIG_PROV_ID,
+                                              nvl(G.PROVIDER_ID,A.PROVIDER_ID) IDW_PROVIDER_ID,
+                                              A.MONTH_ID,
+                                              A.COPAY_AMT AS COPAY_AMT,
+                                              --A.PAT_OPC_AMT AS PATIENT_OPC,
+                                              A.PAT_PAY_AMT AS PATIENT_PAY_AMT,
+                                              A.PAT_ZIP3_CD AS PATIENT_ZIP,
+                                              D.ZIP AS PHARMACY_ZIP,  --A.OTLT_ZIP AS PHARMACY_ZIP,
+                                              A.DSPNSD_QTY AS QUANTITY_DISPENSED,
+                                              A.CUST_PRC AS RETAIL_DOL_AMT,
+                                              A.TOTAL_PAID_AMT AS TOTAL_AMT_PAID,
+                                              B.MARKET_ID ,
+                                              B.MIN_DOS ,
+                                              B.MIN_SSD,
+                                              A.SUPPLIER_ID,
+                                              A.PAY_TYP_CD,
+                                              CASE WHEN C.CLAIM_ID IS NULL THEN '0' ELSE '1' END AS ACTN_TBL_MTCH,
+                                                   C.COPAY_AMT_ACTN_CD,
+                                                   C.PAT_PAY_ACTN_CD,
+                                                   C.CUST_PRICE_ACTN_CD,
+                                              --Retrieve the OPC from RX data based on the following criteria (trumping rules)
+                                              CASE WHEN A.PAY_TYP_CD = 1 THEN A.CUST_PRC
+                                                   WHEN C.PAT_PAY_ACTN_CD IN (' ','Z','H','03','05','00','01','12','13','16','17','18') THEN A.PAT_PAY_AMT
+                                                   WHEN C.COPAY_AMT_ACTN_CD IN (' ','Z','H','03','05','00','01','13','16','17','18') THEN A.COPAY_AMT
+                                                   ELSE NULL
+                                                   END AS STG_OPC_AMT,
+                                              MOD(PATIENT_ID,20) PAT_MOD  -- (PATIENT_ID % 20).as(""dd)
+                                              FROM PROD_DF2_US9.v_rx_trans_ss A
+                                              INNER JOIN $database.tts_cv_merge_cdm_dx_rx_pat_$year B
+                                              ON A.PATIENT_ID = B.IDW_PATIENT_ID
+                                              LEFT OUTER JOIN PROD_DF2_US9.v_rx_trans_actn C
+                                              ON A.MONTH_ID=C.MONTH_ID
+                                              AND A.CLAIM_ID=C.CLAIM_ID
+                                              LEFT OUTER JOIN PROD_DF2_US9.V_PHARMACY D
+                                              ON A.PHARMACY_ID=D.PHARMACY_ID
+                                              LEFT OUTER JOIN $database.V_PDM_PLAN E
+                                              ON A.PLAN_ID = E.FR_PLAN_ID
+                                              LEFT OUTER JOIN $database.V_PDM_PROVIDER G
+                                              ON A.PROVIDER_ID=G.FR_PROVIDER_ID
+                                              WHERE A.MONTH_ID BETWEEN $year AND $year
+                                              AND A.SVC_DT >= B.MIN_SSD
+                                              AND A.PATIENT_ID > 0
+                                              )RX""")
+
+
+        join_data_frames.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_RX_CLM_EXTRCT_$year")
+
+        spark.sql(s"""drop table if exists $database.TTS_CV_DX_TMP1_$year""")
+        /*
+  spark.sql(s"""drop table if exists $database.tts_cv_dx_$year_tmp1""")
+  spark.sql(s"""drop table if exists $database.tts_cv_dx_$year_tmp1""")
+
+  */
+
+
+
+  val V_RX_TRANS_SS = spark.read.table("PROD_DF2_US9.V_RX_TRANS_SS").alias("A")
+      .filter(round(col("A.MONTH_ID") / 100, 0) === lit(year)
+       && col("A.SVC_DT") >= col("B.MIN_SSD") && col("A.PATIENT_ID") > lit(0))
+
+  val TTS_CV_MERGE_CDM_DX_RX_PAT_DF = spark.read.table(s"$database.TTS_CV_MERGE_CDM_DX_RX_PAT_$year")
+
+  val V_PDM_PLAN_DF = spark.read.table(s"$database.V_PDM_PLAN")
+  val V_PDM_PROVIDER_DF = spark.read.table(s"$database.V_PDM_PROVIDER")
+
+  val V_RX_TRANS_SS_ALL_DF = V_RX_TRANS_SS.alias("A").join(TTS_CV_MERGE_CDM_DX_RX_PAT_DF.alias("B"),
+    col("A.PATIENT_ID") === col("B.IDW_PATIENT_ID"),"inner")
+    .join(V_RX_TRANS_ACTN_DF.alias("C"),col("A.MONTH_ID")=== col("C.MONTH_ID")&&
+      col("A.CLAIM_ID")=== col("C.CLAIM_ID"),"left_outer")
+    .join(V_PHARMACY_DF.alias("D"),col("A.PHARMACY_ID")=== col("D.PHARMACY_ID"),"left_outer")
+    .join(V_PDM_PLAN_DF.alias("E"),col("A.PLAN_ID")=== col("E.FR_PLAN_ID"),"left_outer")
+    .join(V_PDM_PROVIDER_DF.alias("G"),col("A.PROVIDER_ID")=== col("G.FR_PROVIDER_ID"))
+    //.withColumn("PAT_MOD",col("PATIENT_ID")% 20)
+      .select(
+      col("A.CHNL_CD"),
+      col("A.CLAIM_ID"),
+      col("A.SVC_DT").as("DATE_OF_SERVICE"),
+      col("A.DAYS_SUPPLY_CNT").as("DAYS_SUPPLY"),
+      col("A.FILL_NBR"),
+      col("A.PAT_BRTH_YR_NBR").as("PATIENT_AGE"),
+      col("A.PAT_GENDER_CD").as("PATIENT_GENDER"),
+      col("A.PATIENT_ID").as("IDW_PATIENT_ID"),
+      col("A.PHARMACY_ID").as("IDW_PHARMACY_ID"),
+      col("A.PRODUCT_ID").as("IDW_PRODUCT_ID"),
+      col("A.PLAN_ID ORIG_PLAN_ID"),
+      when(col("E.PLAN_ID") =!= lit(null),col("E.PLAN_ID"))
+        .otherwise(col("A.PLAN_ID")).as("PLAN_ID"),
+      lit(-999).as ("IDW_PAYER_ID"),
+      col("A.PROVIDER_ID ORIG_PROV_ID"),
+      when(col("G.PROVIDER_ID") =!= lit(null),col("G.PROVIDER_ID"))
+        .otherwise(col("A.PROVIDER_ID").as("IDW_PROVIDER_ID")),
+      col("A.MONTH_ID"),
+      col("A.COPAY_AMT").as("COPAY_AMT"),
+      col("A.PAT_PAY_AMT").as("PATIENT_PAY_AMT"),
+      col("A.PAT_ZIP3_CD").as("PATIENT_ZIP"),
+      col("D.ZIP").as("PHARMACY_ZIP"),
+      col("A.DSPNSD_QTY").as("QUANTITY_DISPENSED"),
+      col("A.CUST_PRC").as("RETAIL_DOL_AMT"),
+      col("A.TOTAL_PAID_AMT").as("TOTAL_AMT_PAID"),
+      col("B.MARKET_ID"),
+      col("B.MIN_DOS"),
+      col("B.MIN_SSD"),
+      col("A.SUPPLIER_ID"),
+      col("A.PAY_TYP_CD"),
+      when(col("C.CLAIM_ID") isNull,lit(0)).otherwise(lit(1).as("ACTN_TBL_MTCH")),
+      col("C.COPAY_AMT_ACTN_CD"),
+      col("C.PAT_PAY_ACTN_CD"),
+      col("C.CUST_PRICE_ACTN_CD"),
+      when(col("A.PAY_TYP_CD")=== lit(1),col("A.PAY_TYP_CD")).
+      when(col("C.PAT_PAY_ACTN_CD").isin(List(" ","Z","H","03","05","00","01","12","13","16","17","18"):_*),
+        col("A.PAT_PAY_AMT")).
+      when(col("C.COPAY_AMT_ACTN_CD").isin(List(" ","Z","H","03","05","00","01","13","16","17","18"):_*),
+        col("A.COPAY_AMT").otherwise(null).as ("STG_OPC_AMT")),
+        col("PATIENT_ID").mod(20).alias("PAT_MOD"))
+
+val FINAL_DF = V_RX_TRANS_SS_ALL_DF.alias("RX")
+    .select(col("RX.*"),
+    when({coalesce(col("RX.STG_OPC_AMT"),lit(-9999)) > coalesce(col("RX.RETAIL_DOL_AMT"),
+      lit(-9999))},col("RX.RETAIL_DOL_AMT"))
+      .otherwise("RX.STG_OPC_AMT").alias("PATIENT_OPC"))
+
+
+        FINAL_DF.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_RX_CLM_EXTRACT_$year")
+
+
+      }
+    }
+  }
+}
+===========================================================
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+class GeneratingRX_DIM_Data(spark: SparkSession, database:String, startYear: Int, endYear: Int, tableName: String) {
+
+  def generateTTS_CV_RX_DIM_DATA_yearwise_table = {
+
+    val years = (startYear to endYear).toList
+
+    years.foreach {
+      year => {
+
+        val TTS_CV_T_RX_DIM_DATA_DF = spark.read.table(s"$database.TTS_CV_T_RX_DIM_DATA_$year")
+        val TTS_CV_T_INDEX_FILE_RX_DF = spark.read.table(s"$database.TTS_CV_T_INDEX_FILE_RX_$year")
+        val JOIN_DFS = TTS_CV_T_RX_DIM_DATA_DF.alias("A").join(TTS_CV_T_INDEX_FILE_RX_DF.alias("B"),
+          col("A.IDW_PATIENT_ID") === col("B.IDW_PATIENT_ID"), "inner")
+          .select(
+            col("A.CLAIM_ID"),
+            col("A.DATE_OF_SERVICE"),
+            col("A.DAYS_SUPPLY"),
+            col("A.FILL_NBR"),
+            col("A.PATIENT_AGE"),
+            col("A.PATIENT_GENDER"),
+            col("A.IDW_PATIENT_ID"),
+            col("A.IDW_PAYER_ID"),
+            col("A.IDW_PHARMACY_ID"),
+            col("A.IDW_PRODUCT_ID"),
+            col("A.IDW_PROVIDER_ID"),
+            col("A.MONTH_ID"),
+            col("A.PATIENT_OPC"),
+            col("A.PATIENT_PAY_AMT"),
+            col("A.PATIENT_ZIP"),
+            col("A.PHARMACY_ZIP"),
+            col("A.QUANTITY_DISPENSED"),
+            col("A.RETAIL_DOL_AMT"),
+            col("A.TOTAL_AMT_PAID"),
+            col("A.MARKET_ID"),
+            col("A.MIN_DOS"),
+            col("A.MIN_SSD"),
+            col("A.TTS_GENDER"),
+            col("A.TTS_SPECIALTY_DESC"),
+            col("A.TTS_SPECIALTY_ID"),
+            col("A.TTS_PAY_TYPE_ID"),
+            col("A.TTS_PAY_TYPE_DESC"),
+            col("B.TTS_REGION"),
+            col("B.TTS_STATE"),
+            col("B.TTS_CBSA_CD"),
+            col("B.TTS_COUNTY"),
+            col("A.TTS_AGE_ID"),
+            col("A.TTS_AGE_DESC"),
+            col("A.TTS_PNAME"),
+            col("A.TTS_ROUTE"),
+            col("A.TTS_TCRF4_DESC"),
+            col("A.TTS_PROD_GROUP"),
+            col("A.TTS_SUB_CLASS"),
+            col("A.TTS_CLASS"),
+            col("A.TTS_CLASS_TYPE"),
+            col("A.TTS_PT_TYPE"))
+
+
+        JOIN_DFS.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_RX_DIM_DATA_$year")
+
+      }
+
+    }
+  }
+}
+================================================
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+class GeneratingRx_Opc_Pln(spark: SparkSession, database:String, startYear: Int, endYear: Int, tableName: String) {
+  def generateTTS_CV_RX_OPC_PLN_yearwise_table = {
+
+    val years = (startYear to endYear).toList
+
+    years.foreach {
+      year => {
+        val OPC_PLN_year_datafrm1 = spark.sql(
+          s"""with  q1 as
+                              (SELECT
+                                      A.CHNL_CD,
+                                      A.CLAIM_ID,
+                                      A.SVC_DT AS DATE_OF_SERVICE,
+                                      A.DAYS_SUPPLY_CNT AS DAYS_SUPPLY,
+                                      A.FILL_NBR,
+                                      A.PAT_AGE_NBR AS PATIENT_AGE,
+                                      A.PAT_GENDER_CD AS PATIENT_GENDER,
+                                      A.PATIENT_ID AS IDW_PATIENT_ID,
+                                      A.PHARMACY_ID AS IDW_PHARMACY_ID,
+                                      A.PRODUCT_ID AS IDW_PRODUCT_ID,
+                                      A.PLAN_ID ORIG_PLAN_ID,
+                                      nvl(E.PLAN_ID,A.PLAN_ID) PLAN_ID,
+                                      0 AS IDW_PAYER_ID,
+                                      A.PROVIDER_ID ORIG_PROV_ID,
+                                      nvl(G.PROVIDER_ID,A.PROVIDER_ID) IDM_PROVIDER_ID,
+                                      A.MONTH_ID,
+                                      A.COPAY_AMT AS COPAY_AMT,
+                                      --A.PAT_OPC_AMT AS PATIENT_OPC,
+                                      A.PAT_PAY_AMT AS PATIENT_PAY_AMT,
+                                      A.PAT_ZIP3_CD AS PATIENT_ZIP,
+                                      D.ZIP AS PHARMACY_ZIP,  --A.OTLT_ZIP AS PHARMACY_ZIP,
+                                      A.DSPNSD_QTY AS QUANTITY_DISPENSED,
+                                      A.CUST_PRC AS RETAIL_DOL_AMT,
+                                      A.TOTAL_PAID_AMT AS TOTAL_AMT_PAID,
+                                      B.MARKET_ID ,
+                                      B.MIN_DOS ,
+                                      B.MIN_SSD,
+                                      A.SUPPLIER_ID,
+                                      A.PAY_TYP_CD,
+                                      CASE WHEN C.CLAIM_ID IS NULL THEN '0' ELSE '1' END AS ACTN_TBL_MTCH,
+                                      C.COPAY_AMT_ACTN_CD,
+                                      C.PAT_PAY_ACTN_CD,
+                                      C.CUST_PRICE_ACTN_CD,
+                                      CASE WHEN A.PAY_TYP_CD = 1  THEN A.CUST_PRC
+                                      WHEN nvl(C.PAT_PAY_ACTN_CD,'!') IN ('!',' ','Z','H') THEN A.PAT_PAY_AMT
+                                      WHEN nvl(C.COPAY_AMT_ACTN_CD,'!') IN ('!',' ','Z','H') THEN A.COPAY_AMT
+                                      ELSE NULL
+                                      END AS STG_OPC_AMT,
+                                      MOD(PATIENT_ID,20) PAT_MOD
+                                      FROM prod_df2_us9.v_rx_trans_ss A
+                                      INNER JOIN $database.tts_cv_MERGE_CDM_DX_RX_PAT_$year B
+                                      ON A.PATIENT_ID = B.IDW_PATIENT_ID
+                                      LEFT OUTER JOIN prod_df2_us9.v_rx_trans_actn C
+                                      ON A.MONTH_ID=C.MONTH_ID
+                                      AND A.CLAIM_ID=C.CLAIM_ID
+                                      LEFT OUTER JOIN prod_df2_us9.V_PHARMACY D    --RD ADDED
+                                      ON A.PHARMACY_ID=D.PHARMACY_ID
+                                      LEFT OUTER JOIN $database.V_PDM_PLAN E
+                                      ON A.PLAN_ID = E.FR_PLAN_ID
+                                      LEFT OUTER JOIN PROD_DF2_US9.V_PROVIDER G
+                                      ON A.PROVIDER_ID=G.PROVIDER_ID
+                                      WHERE A.MONTH_ID = $year
+                                      AND A.SVC_DT >= B.MIN_SSD
+                                      AND A.PATIENT_ID > 0)
+                                      SELECT RX.*, CASE WHEN nvl(RX.STG_OPC_AMT, -9999) > nvl(RX.RETAIL_DOL_AMT,-9999) THEN RX.RETAIL_DOL_AMT
+                                                            ELSE RX.STG_OPC_AMT
+                                                     END AS PATIENT_OPC
+                                      FROM q1   RX""")
+
+
+        val final_dfs = OPC_PLN_year_datafrm1.filter(col("pay_typ_cd") =!= lit(1) && col("copay_amt") < lit(0)
+          && col("PATIENT_PAY_AMT") < lit(0))
+          .select(col("idw_patient_id"),
+            col("PAT_PAY_ACTN_CD"),
+            col("COPAY_AMT_ACTN_CD"),
+            col("pay_typ_cd"),
+            col("copay_amt"),
+            col("PATIENT_PAY_AMT"),
+            col("STG_OPC_AMT"),
+            col("RETAIL_DOL_AMT"),
+            col("PATIENT_OPC"))
+
+        final_dfs.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_RX_OPC_PLN_$year")
+
+        /*
+   val second_df = spark.read.table("PROD_US9_500167.tts_cv_rx_opc_pln_2017")
+     .filter(col("pay_typ_cd")=!=lit(1) && col("copay_amt")<lit(0) && col("PATIENT_PAY_AMT")<lit(0))
+
+   val final_df =second_df.select(col("idw_patient_id"),
+                                  col("PAT_PAY_ACTN_CD"),
+                                  col("COPAY_AMT_ACTN_CD"),
+                                  col("pay_typ_cd"),
+                                  col("copay_amt"),
+                                  col("PATIENT_PAY_AMT"),
+                                  col("STG_OPC_AMT"),
+                                  col("RETAIL_DOL_AMT"),
+                                  col("PATIENT_OPC")) */
+      }
+
+    }
+  }
+}
+=======================================
+package com.rxcorp.cvmarketinbound
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+class GeneratingT_1_Index_File_Dx(spark: SparkSession, database:String, startYear: Int, endYear: Int, tableName: String) {
+
+  def generateINDEX_FILE_DX_yearwise_tables = {
+
+    val years = (startYear to endYear).toList
+
+    years.foreach {
+      year => {
+
+       // spark.sql(s"""DROP TABLE if exists $database.TTS_CV_T_1_INDEX_FILE_DX_$year purge""")
+
+        val INDEX_FILE_DX_DF1 = spark.sql(
+          s"""SELECT IDW_PATIENT_ID, MAX(PROV_ZIPCODE) PROV_ZIPCODE, OLD_TTS_REGION TTS_REGION, OLD_TTS_STATE TTS_STATE,
+                                             OLD_TTS_CBSA_CD TTS_CBSA_CD , OLD_TTS_COUNTY TTS_COUNTY,
+                                             COUNT(*) AS REC_CNT FROM prod_us9_500167.tts_cv_T_DX_DIM_DATA_$year A
+                                             GROUP BY IDW_PATIENT_ID, OLD_TTS_REGION, OLD_TTS_STATE, OLD_TTS_CBSA_CD, OLD_TTS_COUNTY""")
+
+
+        INDEX_FILE_DX_DF1.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_T_1_INDEX_FILE_DX_$year")
+
+
+      //  spark.sql(s"""DROP TABLE if exists $database.TTS_CV_T_INDEX_FILE_DX_$year purge""")
+
+
+        val CV_T_INDEX_FILE_DX_DF2 = spark.sql(
+          s"""with q1 as (SELECT IDW_PATIENT_ID, PROV_ZIPCODE, TTS_REGION, TTS_STATE, TTS_CBSA_CD, TTS_COUNTY,
+                                                   ROW_NUMBER() OVER ( PARTITION BY IDW_PATIENT_ID ORDER BY REC_CNT DESC) AS RNK
+                                                   FROM  prod_us9_500167.TTS_CV_T_1_INDEX_FILE_DX_$year)
+                                                   SELECT IDW_PATIENT_ID,PROV_ZIPCODE, TTS_REGION, TTS_STATE, TTS_CBSA_CD ,TTS_COUNTY
+                                                   FROM   q1  WHERE RNK = 1""")
+
+
+        CV_T_INDEX_FILE_DX_DF2.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_T_INDEX_FILE_DX_$year")
+
+      }
+
+    }
+  }
+}
+===========================================
+
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+
+class GeneratingT_1_Index_File_Rx(spark: SparkSession, database:String, startYear: Int, endYear: Int, tableName: String) {
+
+  def genTTS_CV_T_1_INDEX_FILE_RX_yearwise_tables = {
+
+    val years = (startYear to endYear).toList
+
+    years.foreach {
+      year => {
+
+      //  spark.sql(s"""DROP TABLE IF EXISTS $database.tts_cv_T_1_INDEX_FILE_RX_$year""")
+
+        val INDEX_FILE_RX_DF1 = spark.sql(
+          s"""SELECT IDW_PATIENT_ID, OLD_TTS_REGION TTS_REGION, OLD_TTS_STATE TTS_STATE,
+                            OLD_TTS_CBSA_CD TTS_CBSA_CD,OLD_TTS_COUNTY TTS_COUNTY, COUNT(*) AS REC_CNT
+                            FROM $database.tts_cv_T_RX_DIM_DATA_$year A
+                            GROUP BY IDW_PATIENT_ID, OLD_TTS_REGION, OLD_TTS_STATE, OLD_TTS_CBSA_CD,OLD_TTS_COUNTY""")
+
+
+        INDEX_FILE_RX_DF1.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_T_1_INDEX_FILE_RX_$year")
+
+
+        val INDEX_FILE_RX_DF2 = spark.sql(
+          s"""WITH Q2 AS
+                           ( WITH Q1 AS
+                           ( SELECT IDW_PATIENT_ID, TTS_REGION, TTS_STATE, TTS_CBSA_CD,TTS_COUNTY, SUM(REC_CNT) AS REC_CNT FROM $database.tts_cv_T_1_INDEX_FILE_RX_$year
+                           GROUP BY IDW_PATIENT_ID, TTS_REGION, TTS_STATE, TTS_CBSA_CD,TTS_COUNTY )
+                           SELECT IDW_PATIENT_ID, TTS_REGION, TTS_STATE, TTS_CBSA_CD,TTS_COUNTY , ROW_NUMBER() OVER ( PARTITION BY IDW_PATIENT_ID ORDER BY REC_CNT DESC) AS RNK
+                            FROM Q1
+                            )
+                            SELECT IDW_PATIENT_ID, TTS_REGION, TTS_STATE, TTS_CBSA_CD,TTS_COUNTY  FROM
+                           Q2 WHERE RNK = 1""")
+
+        INDEX_FILE_RX_DF2.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_T_INDEX_FILE_RX_$year")
+
+      }
+
+    }
+  }
+}
+=====================================================
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.IntegerType
+
+
+class GeneratingT_Dx_Dim_Data(spark: SparkSession, database:String, startYear: Int, endYear: Int, tableName: String)
+{
+def gentts_cv_T_DX_DIM_DATA_yearwise_table = {
+
+  val years = (startYear to endYear).toList
+
+  years.foreach {
+    year => {
+
+      /** **********************************T_DX_DIM_DATATable ******************************/
+
+     // spark.sql(s"""DROP TABLE IF EXISTS $database.tts_cv_T_DX_DIM_DATA_$year""")
+      /*
+  val tts_cv_T_DX_DIM_DATA_2016_PRE = spark.read.table("PROD_US9_500167.tts_cv_T_DX_DIM_DATA_2016_PRE")
+      .filter(col("PAT.PATIENT_GENDER").isin(List("1","2","M","F"):_*)&&
+      col("A.IDW_RENDERING_PROVIDER_ID") =!= lit("NULL")&&
+      col("A.IDW_PAYER_ID") =!= lit("NULL")&&
+      col("A.PATIENT_AGE") =!= lit("NULL"))
+
+  val tts_cv_DIM_PATIENT_2016 = spark.read.table("PROD_US9_500167.tts_cv_DIM_PATIENT_2016")
+  val tts_cv_PROVIDER_SPECIALTY_XREF = spark.read.table("PROD_US9_500167.tts_cv_PROVIDER_SPECIALTY_XREF")
+  val tts_cv_PAYER_XREF_ORIG = spark.read.table("PROD_US9_500167.tts_cv_PAYER_XREF_ORIG")
+  val tts_cv_DIM_REGION = spark.read.table("PROD_US9_500167.tts_cv_DIM_REGION")
+  val tts_cv_DIM_AGE = spark.read.table("PROD_US9_500167.tts_cv_DIM_AGE")
+  val tts_cv_DIM_COMP_COMORB = spark.read.table("PROD_US9_500167.tts_cv_DIM_COMP_COMORB")
+  val tts_cv_DIM_COMP_COMORB_PROC = spark.read.table("PROD_US9_500167.tts_cv_DIM_COMP_COMORB_PROC")
+  val tts_cv_DIM_PROCEDURE = spark.read.table("PROD_US9_500167.tts_cv_DIM_PROCEDURE")
+  val COH_IDX_PT_TYPE = spark.read.table("PROD_US9_500167.COH_IDX_PT_TYPE")
+
+  import org.apache.spark.sql.expressions.Window
+
+  val tts_cv_T_DX_DIM_DATA_2016_PRE_join_df9 = tts_cv_T_DX_DIM_DATA_2016_PRE.alias("A")
+      .join(tts_cv_DIM_PATIENT_2016.alias("PAT"),
+       col("A.IDW_PATIENT_ID")=== col("PAT.IDW_PATIENT_ID"),"left_outer")
+      .join(tts_cv_PROVIDER_SPECIALTY_XREF.alias("PROV"),
+       col("A.IDW_RENDERING_PROVIDER_ID")=== col("PROV.IDW_PROVIDER_ID"),"left_outer")
+      .join(tts_cv_PAYER_XREF_ORIG.alias("PAYER"),
+        col("A.IDW_PAYER_ID")=== col("PAYER.IDW_PAYER_ID"),"left_outer")
+      .join(tts_cv_DIM_REGION.alias("REG"),
+        col("PROV.ZIPCODE")=== col("REG.ZIP"),"left_outer")
+      .join(tts_cv_DIM_AGE.alias("AGE"),
+      col("A.PATIENT_AGE").between("AGE.AGE_LOWER","AGE.AGE_UPPER"),"left_outer")
+      .join(tts_cv_DIM_COMP_COMORB.alias("CC"),
+        col("A.DIAG_CD")=== col("CC.DIAG_CD"),"left_outer")
+      .join(tts_cv_DIM_COMP_COMORB_PROC.alias("CC1"),
+        col("A.PROCEDURE_CD")===col("CC1.PRC_CD"),"left_outer")
+      .join(tts_cv_DIM_PROCEDURE.alias("PRC"),
+        col("A.PROCEDURE_CD")===col("PRC.PROCEDURE_CD"),"left_outer")
+       .join(COH_IDX_PT_TYPE.alias("PT_TYPE"),
+       col("A.IDW_PATIENT_ID")=== col("PT_TYPE.IDW_PATIENT_ID") &&
+       col("PT_TYPE.cohort_id")=== lit("2016"),"left_outer")
+    .withColumn("TTS_MD_PROC_FLAG",max(when(col("PROV.IDW_PROVIDER_ID") isNull, lit(0)).otherwise(lit(1))) over (Window.partitionBy(col("A.IDW_PATIENT_ID"))))
+    .select(
+      col("a.CLAIM_ID"),
+      col("a.SERVICE_NBR"),
+      col("a.DX_CODE_POSITION"),
+      col("a.APPROVED_AMT"),
+      col("a.DIAG_CD"),
+      col("a.IDW_PATIENT_ID"),
+      col("a.ORIG_PLAN_ID"),
+      col("A.INF_PLAN_ID").as("INF_PLAN_ID_STP1"),
+      col("A.IDW_PAYER_ID"),
+      col("a.ORIG_RENDERING_PROV_ID"),
+      col("a.IDW_RENDERING_PROVIDER_ID"),
+      col("a.MONTH_ID"),
+      col("a.PATIENT_AGE"),
+      col("a.PATIENT_ZIP3"),
+      col("a.PLACE_OF_SERVICE_CD"),
+      col("a.PROCEDURE_CD"),
+      col("a.SERVICE_CHARGE_AMT"),
+      col("a.SERVICE_FROM_DATE"),
+      col("a.SERVICE_TO_DATE"),
+      col("a.TYPE_OF_SVCS_ID"),
+      col("a.UNITS_OF_SERVICE"),
+      col("a.VISIT_KEY"),
+      col("a.CLAIM_MONTH_ID"),
+      col("a.TOT_CLAIM_CHG"),
+      col("a.TOT_CLAIM_BAL"),
+      col("a.TOT_PURCH_SVC_LAB_CHARGES"),
+      col("a.MARKET_ID"),
+      col("a.MIN_SSD"),
+      col("a.MIN_DOS"),
+      col("a.CLAIM_TYP_CD"),
+      col("A.PAT_MOD"),
+      col("PRC.ORIG_SERVICE_DESCRIPTION").as("TTS_SERVICE_DESCRIPTION"),
+      col("PAT.PATIENT_GENDER").as("TTS_GENDER"),
+      col("AGE.AGE_ID").as("TTS_AGE_ID"),
+      col("AGE.AGE_DESC").as("TTS_AGE_DESC"),
+      coalesce(col("CC.CATEGORY_DESC"),col("cc1.PROCEDURE_LEVEL_1")).alias("TTS_CATEGORY_DESC"),
+      //lit(null).cast(toString).alias("TTS_COMPLICATION_FLAG"),
+     // lit(null).cast(toString).alias("TTS_COMORBIDITY_FLAG"),
+      //when(col("CC.CATEGORY_DESC"). isNotNull, lit(1)).otherwise(lit(0)).alias("TTS_COMPLICATION_FLAG"),
+      //when(col("CC.CATEGORY_DESC") || col("cc1.PROCEDURE_LEVEL_1"). isNotNull, lit(1)).otherwise(lit(0)).as("TTS_COMORBIDITY_FLAG"),
+      when(rtrim(ltrim(col("PLACE_OF_SERVICE_CD"))).isin(List("11","3","o"):_*),lit("OFFICE")).
+      when(rtrim(ltrim(col("PLACE_OF_SERVICE_CD"))).isin(List("21","1","IH"):_*),lit("INP_HOS")).
+      when(rtrim(ltrim(col("PLACE_OF_SERVICE_CD"))).isin(List("22","2","OH"):_*),lit("OP_HOS")).
+      when(rtrim(ltrim(col("PLACE_OF_SERVICE_CD"))).isin(List("23","ER"):_*),lit("ER")).
+      when(rtrim(ltrim(col("PLACE_OF_SERVICE_CD"))).isin(List("24","AS","B"):_*),lit("AM_SURG")).otherwise(lit("OTHER")).as("TTS_PLACE_OF_SERVICE"),
+      coalesce(col("PROV.TTS_DX_SPECIALTY_DESC"),lit("UNKNOWN")).as("TTS_SPECIALTY_DESC"),
+      coalesce(col("PROV.TTS_DX_SPECIALTY_DESC"),lit(0)).as("TTS_SPECIALTY_ID"),
+      coalesce(col("PAYER.TTS_PAY_TYPE_ID"),lit(5)).as("TTS_PAY_TYPE_ID"),
+      coalesce(col("PAYER.TTS_PAY_TYPE_DESC"),lit("UNKNOWN")).as("TTS_PAY_TYPE_DESC"),
+      col("PROV.ZIPCODE").as("PROV_ZIPCODE"),
+      col("REG.REGION").as("OLD_TTS_REGION"),
+      col("REG.ST").as("OLD_TTS_STATE"),
+      col("REG.CBSA_CD").as("OLD_TTS_CBSA_CD"),
+      col("REG.COUNTY").as("OLD_TTS_COUNTY"),
+      coalesce(col("PT_TYPE"),lit(-1)).as("TTS_PT_TYPE"),
+      col("TTS_MD_PROC_FLAG")).as("q1")
+
+  tts_cv_T_DX_DIM_DATA_2016_PRE_join_df5.write.mode("overwrite").saveAsTable(s"$database.tts_cv_T_DX_DIM_DATA_2016")
+
+    spark.sql("""select distinct * from q1""")*/
+
+
+      val FirstDF = spark.sql(
+        s"""with q1 as
+    (SELECT a.CLAIM_ID,a.SERVICE_NBR,a.DX_CODE_POSITION,a.APPROVED_AMT,a.DIAG_CD,a.IDW_PATIENT_ID,
+    a.ORIG_PLAN_ID,  A.IDW_PAYER_ID,
+    a.ORIG_RENDERING_PROV_ID,a.IDW_RENDERING_PROVIDER_ID,
+    a.MONTH_ID,a.PATIENT_AGE,a.PATIENT_ZIP3,a.PLACE_OF_SERVICE_CD,A.INF_PLAN_ID AS INF_PLAN_ID_STP1,
+    a.PROCEDURE_CD,a.SERVICE_CHARGE_AMT,a.SERVICE_FROM_DATE,
+    a.SERVICE_TO_DATE,a.TYPE_OF_SVCS_ID,a.UNITS_OF_SERVICE,
+    a.VISIT_KEY,a.CLAIM_MONTH_ID,a.TOT_CLAIM_CHG,a.TOT_CLAIM_BAL,
+    a.TOT_PURCH_SVC_LAB_CHARGES,a.MARKET_ID,a.MIN_SSD,a.MIN_DOS,
+    a.CLAIM_TYP_CD, A.PAT_MOD,
+    PRC.ORIG_SERVICE_DESCRIPTION TTS_SERVICE_DESCRIPTION,PAT.PATIENT_GENDER AS TTS_GENDER,
+	AGE.AGE_ID AS TTS_AGE_ID,
+    AGE.AGE_DESC AS TTS_AGE_DESC,
+    coalesce(CC.CATEGORY_DESC,cc1.PROCEDURE_LEVEL_1) AS TTS_CATEGORY_DESC,
+    case when CC.CATEGORY_DESC is not null then 1 else 0 end  AS TTS_COMPLICATION_FLAG,
+    case when CC.CATEGORY_DESC is not null or cc1.PROCEDURE_LEVEL_1 is not null then 1 else 0 end AS TTS_COMORBIDITY_FLAG,
+     CASE
+         WHEN RTRIM(LTRIM(PLACE_OF_SERVICE_CD)) IN ('11', '3', 'O') THEN 'OFFICE'
+         WHEN RTRIM(LTRIM(PLACE_OF_SERVICE_CD)) IN ('21', '1', 'IH') THEN 'INP_HOS'
+         WHEN RTRIM(LTRIM(PLACE_OF_SERVICE_CD)) IN ('22', '2', 'OH') THEN 'OP_HOS'
+         WHEN RTRIM(LTRIM(PLACE_OF_SERVICE_CD)) IN ('23', 'ER') THEN 'ER'
+         WHEN RTRIM(LTRIM(PLACE_OF_SERVICE_CD)) IN ('24', 'AS', 'B') THEN 'AM_SURG'
+         ELSE 'OTHER'
+     END TTS_PLACE_OF_SERVICE,
+    NVL(PROV.TTS_DX_SPECIALTY_DESC, 'UNKNOWN') AS  TTS_SPECIALTY_DESC,
+    NVL(PROV.TTS_DX_SPECIALTY_ID , 0) AS TTS_SPECIALTY_ID,
+    NVL(PAYER.TTS_PAY_TYPE_ID, 5) AS TTS_PAY_TYPE_ID,
+    NVL(PAYER.TTS_PAY_TYPE_DESC, 'Unknown') AS TTS_PAY_TYPE_DESC,
+    PROV.ZIPCODE PROV_ZIPCODE,
+    REG.REGION AS OLD_TTS_REGION,
+    REG.ST AS OLD_TTS_STATE,
+    REG.CBSA_CD AS OLD_TTS_CBSA_CD,
+    REG.COUNTY as OLD_TTS_COUNTY,
+	CASE WHEN PROV.IDW_PROVIDER_ID = MAX(PROV.IDW_PROVIDER_ID)OVER(PARTITION BY A.IDW_PATIENT_ID)THEN 0 ELSE 1 END AS TTS_MD_PROC_FLAG,
+	NVL(PT_TYPE,-1) as TTS_PT_TYPE
+	FROM $database.tts_cv_T_DX_DIM_DATA_PRE_$year A
+    LEFT OUTER JOIN $database.tts_cv_DIM_PATIENT_$year PAT
+    ON A.IDW_PATIENT_ID = PAT.IDW_PATIENT_ID
+    LEFT OUTER  JOIN $database.tts_cv_PROVIDER_SPECIALTY_XREF PROV
+    ON A.IDW_RENDERING_PROVIDER_ID = PROV.IDW_PROVIDER_ID
+    LEFT OUTER JOIN $database.tts_cv_PAYER_XREF_ORIG PAYER
+    ON A.IDW_PAYER_ID = PAYER.IDW_PAYER_ID
+    LEFT OUTER JOIN $database.tts_cv_DIM_REGION REG
+    ON PROV.ZIPCODE = REG.ZIP
+    LEFT OUTER JOIN $database.tts_cv_DIM_AGE AGE
+    ON A.PATIENT_AGE BETWEEN AGE.AGE_LOWER AND AGE.AGE_UPPER
+    LEFT OUTER JOIN $database.tts_cv_DIM_COMP_COMORB CC
+    ON A.DIAG_CD = CC.DIAG_CD
+    LEFT OUTER JOIN $database.tts_cv_DIM_COMP_COMORB_PROC CC1
+    ON A.PROCEDURE_CD = CC1.PRC_CD
+    LEFT OUTER JOIN $database.tts_cv_DIM_PROCEDURE PRC
+    ON A.PROCEDURE_CD = PRC.PROCEDURE_CD
+    LEFT OUTER JOIN $database.COH_IDX_PT_TYPE PT_TYPE
+    ON A.IDW_PATIENT_ID = PT_TYPE.IDW_PATIENT_ID AND PT_TYPE.cohort_id= '$year'
+    WHERE PAT.PATIENT_GENDER IN ('1','2','M', 'F')
+    AND A.IDW_RENDERING_PROVIDER_ID IS NOT NULL
+    AND A.IDW_PAYER_ID IS NOT NULL
+    AND A.PATIENT_AGE IS NOT NULL)
+   select distinct * from q1""")
+
+      FirstDF.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_T_DX_DIM_DATA_$year")
+
+
+    }
+
+
+  }
+
+
+}
+}
+=============================================
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+class GeneratingT_Dx_Dim_Data_Pre(spark: SparkSession, database: String, startYear: Int, endYear: Int, tableName: String) {
+    def genTTS_DX_DIM_DATA_yearwise_PRE_table = {
+
+        val years = (startYear to endYear).toList
+
+        years.foreach {
+            year => {
+
+                val TTS_CV_DX_CLM_EXTRCT_DF1 = spark.read.table(s"$database.TTS_CV_DX_CLM_EXTRCT_$year")
+                val TTS_CV_DX_PAT_PLN_INF = spark.read.table(s"$database.TTS_CV_DX_PAT_PLN_INF")
+
+                val DX_CLM_EXTRCT_JOIN = TTS_CV_DX_CLM_EXTRCT_DF1.alias("A")
+                  .join(TTS_CV_DX_PAT_PLN_INF.alias("INF"),
+                      col("A.IDW_PATIENT_ID") === col("INF.IN_PATIENT_ID") &&
+                        col("A.PLAN_ID") === col("INF.IN_PLAN_ID") &&
+                        col("INF.IN_CLAIM_YR") === lit(year))
+                  .select(
+                      col("a.CLAIM_ID"),
+                      col("a.SERVICE_NBR"),
+                      col("a.DX_CODE_POSITION"),
+                      col("a.APPROVED_AMT"),
+                      col("a.DIAG_CD"),
+                      col("a.IDW_PATIENT_ID"),
+                      col("a.ORIG_PLAN_ID"),
+                      col("a.PLAN_ID"),
+                      // NVL(INF.INF_PLAN_ID,a.plan_id) AS IDW_PAYER_ID,
+                      coalesce(col("INF.INF_PLAN_ID"), col("a.plan_id")).as("IDW_PAYER_ID"),
+                      col("a.ORIG_RENDERING_PROV_ID"),
+                      col("a.IDW_RENDERING_PROVIDER_ID"),
+                      col("a.MONTH_ID"),
+                      col("a.PATIENT_AGE"),
+                      col("a.PATIENT_ZIP3"),
+                      col("a.PLACE_OF_SERVICE_CD"),
+                      col("a.PROCEDURE_CD"),
+                      col("a.SERVICE_CHARGE_AMT"),
+                      col("a.SERVICE_FROM_DATE"),
+                      col("a.SERVICE_TO_DATE"),
+                      col("a.TYPE_OF_SVCS_ID"),
+                      col("a.UNITS_OF_SERVICE"),
+                      col("a.VISIT_KEY"),
+                      col("a.CLAIM_MONTH_ID"),
+                      col("a.TOT_CLAIM_CHG"),
+                      col("a.TOT_CLAIM_BAL"),
+                      col("a.TOT_PURCH_SVC_LAB_CHARGES"),
+                      col("a.MARKET_ID"),
+                      col("a.MIN_SSD"),
+                      col("a.MIN_DOS"),
+                      col("a.CLAIM_TYP_CD"),
+                      col("A.IDW_PATIENT_ID").mod(20).alias("PAT_MOD"))
+
+              DX_CLM_EXTRCT_JOIN.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_T_DX_DIM_DATA_PRE_$year")
+
+            }
+
+        }
+    }
+}
+=============================================
+
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+class GeneratingT_Rx_Dim_Data(spark: SparkSession, database: String, startYear: Int, endYear: Int, tableName: String) {
+
+  def genTTS_CV_T_RX_DIM_DATA_yearwise_table = {
+
+
+    val years = (startYear to endYear).toList
+
+    years.foreach {
+      year => {
+
+        spark.sql(s"""DROP TABLE IF EXISTS $database.TTS_CV_T_RX_DIM_DATA_$year""")
+
+        val tts_cv_T_RX_DIM_DATA_year_PRE_df = spark.read.table(s"$database.TTS_CV_T_RX_DIM_DATA_2016_PRE").alias("A")
+          .filter(col("A.PATIENT_GENDER").isin(List("1", "2", "F", "M"): _*) && col("A.IDW_PROVIDER_ID").isNotNull
+            && col("A.IDW_PAYER_ID").isNotNull && col("A.PATIENT_AGE").isNotNull)
+
+        val TTS_CV_PROVIDER_SPECIALTY_XREF_df = spark.read.table(s"$database.TTS_CV_PROVIDER_SPECIALTY_XREF")
+        val TTS_CV_PAYER_XREF_ORIG_df = spark.read.table(s"$database.TTS_CV_PAYER_XREF_ORIG")
+        val TTS_CV_DIM_REGION_df = spark.read.table(s"$database.TTS_CV_DIM_REGION")
+        val TTS_CV_DIM_AGE_df = spark.read.table(s"$database.TTS_CV_DIM_AGE")
+        val TTS_CV_DIM_DOI_df = spark.read.table(s"$database.TTS_CV_DIM_DOI")
+        val COH_IDX_PT_TYPE_df = spark.read.table(s"$database.COH_IDX_PT_TYPE")
+
+        val JOIN_DFS = tts_cv_T_RX_DIM_DATA_year_PRE_df.alias("A").join(TTS_CV_PROVIDER_SPECIALTY_XREF_df.alias("PROV"),
+          col("A.IDW_PROVIDER_ID") === col("PROV.IDW_PROVIDER_ID"), "left_outer")
+          .join(TTS_CV_PAYER_XREF_ORIG_df.alias("PAYER"), col("A.IDW_PAYER_ID") === col("PAYER.IDW_PAYER_ID"), "left_outer")
+          .join(TTS_CV_DIM_REGION_df.alias("REG"), col("A.PHARMACY_ZIP") === col("REG.ZIP"), "left_outer")
+          .join(TTS_CV_DIM_AGE_df.alias("AGE"), col("A.PATIENT_AGE").between("AGE.AGE_LOWER", "AGE.AGE_UPPER"), "left_outer")
+          .join(TTS_CV_DIM_DOI_df.alias("PROD"), col("A.IDW_PRODUCT_ID") === col("PROD.IDW_PRODUCT_ID"), "left_outer")
+          .join(COH_IDX_PT_TYPE_df.alias("PT_TYPE"), col("A.IDW_PATIENT_ID") === col("PT_TYPE.IDW_PATIENT_ID")
+            && col("PT_TYPE.cohort_id") === lit(year), "left_outer")
+          .select(
+            col("A.*"),
+            col("PATIENT_GENDER").as("TTS_GENDER"),
+            coalesce(col("PROV.TTS_SPECIALTY_DESC"), lit("UNKNOWN")).as("TTS_SPECIALTY_DESC"),
+            coalesce(col("PROV.TTS_SPECIALTY_ID"), lit(0)).as("TTS_SPECIALTY_ID"),
+            coalesce(col("PAYER.TTS_PAY_TYPE_ID"), lit(5)).as("TTS_PAY_TYPE_ID"),
+            coalesce(col("PAYER.TTS_PAY_TYPE_DESC"), lit("UNKNOWN")).as("TTS_PAY_TYPE_DESC"),
+            coalesce(col("PT_TYPE"), lit(-1)).as("TTS_PT_TYPE"),
+            col("REG.REGION").as("OLD_TTS_REGION"),
+            col("REG.ST").as("OLD_TTS_STATE"),
+            col("REG.CBSA_CD").as("OLD_TTS_CBSA_CD"),
+            col("REG.COUNTY").as("OLD_TTS_COUNTY"),
+            col("AGE.AGE_ID").as("TTS_AGE_ID"),
+            col("AGE.AGE_DESC").as("TTS_AGE_DESC"),
+            col("PROD.PRODUCT_LEVEL_5").as("TTS_PNAME"),
+            col("PROD.TTS_ROUTE").as("TTS_ROUTE"),
+            col("PROD.PRODUCT_LEVEL_4").as("TTS_TCRF4_DESC"),
+            col("PROD.TTS_PROD_GROUP"),
+            col("PROD.TTS_SUB_CLASS"),
+            col("PROD.TTS_CLASS"),
+            col("PROD.TTS_CLASS_TYPE"))
+
+
+        JOIN_DFS.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_T_RX_DIM_DATA_$year")
+
+      }
+
+    }
+  }
+}
+==============================================
+package com.rxcorp.cvmarketinbound
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+class GeneratingT_Rx_Dim_Data_Pre(spark: SparkSession, database: String, startYear: Int, endYear: Int, tableName: String) {
+
+    def genTTS_CV_T_RX_DIM_DATA_yearwise_PRE_Table = {
+
+
+        val years = (startYear to endYear).toList
+
+        years.foreach {
+            year => {
+
+                //spark.sql(s"""DROP TABLE IF EXISTS $database.tts_cv_T_RX_DIM_DATA_2016_PRE""")
+
+                val TTS_CV_RX_CLM_EXTRCT_DF1 = spark.read.table(s"$database.TTS_CV_RX_CLM_EXTRCT_$year")
+                val TTS_CV_RX_PAT_PLN_INF_DF2 = spark.read.table(s"$database.TTS_CV_RX_PAT_PLN_INF")
+                val Join_dfrs = TTS_CV_RX_CLM_EXTRCT_DF1.alias("A").join(TTS_CV_RX_PAT_PLN_INF_DF2.alias("INF"),
+                    col("A.IDW_PATIENT_ID") === col("INF.IN_PATIENT_ID") && col("A.PLAN_ID") === col("INF.IN_PLAN_ID") && col("INF.IN_CLAIM_YR") === lit(year), "left_outer")
+                  .select(
+                      col("A.CHNL_CD"),
+                      col("A.CLAIM_ID"),
+                      col("A.DATE_OF_SERVICE"),
+                      col("A.DAYS_SUPPLY"),
+                      col("A.FILL_NBR"),
+                      col("A.PATIENT_AGE"),
+                      col("A.PATIENT_GENDER"),
+                      col("A.IDW_PATIENT_ID"),
+                      col("A.IDW_PHARMACY_ID"),
+                      col("A.IDW_PRODUCT_ID"),
+                      col("A.ORIG_PLAN_ID"),
+                      col("A.PLAN_ID"),
+                      col("INF.INF_PLAN_ID").as("IDW_PAYER_ID"),
+                      col("A.ORIG_PROV_ID"),
+                      col("A.IDW_PROVIDER_ID"),
+                      col("A.MONTH_ID"),
+                      col("A.COPAY_AMT"),
+                      col("A.PATIENT_PAY_AMT"),
+                      col("A.PATIENT_ZIP"),
+                      col("A.PHARMACY_ZIP"),
+                      col("A.QUANTITY_DISPENSED"),
+                      col("A.RETAIL_DOL_AMT"),
+                      col("A.TOTAL_AMT_PAID"),
+                      col("A.MARKET_ID"),
+                      col("A.MIN_DOS"),
+                      col("A.MIN_SSD"),
+                      col("A.SUPPLIER_ID"),
+                      col("A.PAY_TYP_CD"),
+                      col("A.ACTN_TBL_MTCH"),
+                      col("A.COPAY_AMT_ACTN_CD"),
+                      col("A.PAT_PAY_ACTN_CD"),
+                      col("A.CUST_PRICE_ACTN_CD"),
+                      col("A.STG_OPC_AMT"),
+                      col("A.PAT_MOD"),
+                      col("A.PATIENT_OPC"))
+
+              Join_dfrs.write.mode("overwrite").saveAsTable(s"$database.TTS_CV_T_RX_DIM_DATA_PRE_$year")
+
+            }
+
+        }
+    }
+}
+
